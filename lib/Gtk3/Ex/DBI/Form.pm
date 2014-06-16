@@ -332,9 +332,6 @@ sub new {
                 push @{$self->{primary_keys}}, $row->{COLUMN_NAME};
                 if ( exists $row->{KEY_SEQ} ) {
                     if ( ! $row->{KEY_SEQ} ) {
-                        if ( $self->{debug} ) {
-                            print "This primary key is NOT auto-incrementing. I hope you know what you're doing ...\n";
-                        }
                         $self->{auto_incrementing} = 0;
                     }
                 }
@@ -1128,34 +1125,41 @@ sub fetch_new_slice {
         }
         
         $local_sql .= " from " . $self->{sql}->{from}
-            . " where ( " . join( ', ', @{$self->{primary_keys}} ) . " ) in ( ";
+            . " where ( " . join( ', ', @{$self->{primary_keys}} ) . " ) in (\n";
         
         # The where clause we're trying to build should look like:
         #
         # where ( key_1, key_2, key_3 ) in
         # (
-        #    ( 1, 5, 8 ),
-        #    ( 2, 4, 9 )
+        #    ( 1, 5, 8 )
+        #  , ( 2, 4, 9 )
         # )
         # ... etc ... assuming we have a primary key spanning 3 columns
         
+        # However ... note that now that we support non-integer primary keys, we're using SQL placeholders
+        # instead of directly injecting values into the where clause, otherwise we have nasty 
+        # SQL injection issues ...
+        
+        my ( @key_placeholder_strings, @key_values );
+        
         for ( my $counter = $lower; $counter < $upper+1; $counter++ ) {
-            $local_sql .= " ( " . join( ",", $self->{keyset}[$counter] ) . " ),";
-            #$key_list .= " " . $self->{keyset}[$counter] . ",";
+            push @key_placeholder_strings, " ( " . '?' x @{$self->{primary_keys}} . " )";
+            push @key_values, $self->{keyset}[$counter]; # This is an array of keys for the current record
         }
         
-        # Chop off trailing comma
-        chop( $local_sql );
-        
-        $local_sql .= " )";
+        $local_sql .= join( "\n  , ", @key_placeholder_strings ) . "\n)";
         
         if ( $self->{sql}->{order_by} ) {
-            $local_sql .= " order by " . $self->{sql}->{order_by};
+            $local_sql .= "\norder by " . $self->{sql}->{order_by};
         }
         
         eval {
             $self->{records} = $self->{dbh}->selectall_arrayref (
-                $local_sql, {Slice=>{}}
+                $local_sql
+              , {
+                    Slice => {}
+                }
+              , @key_values
             ) || croak( $self->{dbh}->errstr . "\n\nLocal SQL was:\n$local_sql" );
         };
         
