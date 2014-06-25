@@ -31,44 +31,46 @@ sub new {
         
         # Assemble object from request
         $self = {
-            dbh                     => $$req{dbh}                                  # A database handle
-          , primary_keys            => $$req{primary_keys}                         # An array of primary keys
-          , sql                     => $$req{sql}                                  # A hash of SQL related stuff
-          , widgets                 => $$req{widgets}                              # A hash of field definitions and stuff
-          , schema                  => $$req{schema}                               # The 'schema' to use to get column info from
-          , builder                 => $$req{builder}                              # The Gtk3-Builder object ... use either this or 'form', below
-          , read_only               => $$req{read_only} || FALSE                   # Whether changes to the table are allowed
-          , apeture                 => $$req{apeture} || 100                       # The number of records to select at a time
-          , on_current              => $$req{on_current}                           # A reference to code that is run when we move to a new record
-          , before_query            => $$req{before_query}                         # A reference to code that is run *before* a query is executed ( can abort the query )
-          , before_apply            => $$req{before_apply}                         # A reference to code that is run *before* the 'apply' method is called
-          , on_apply                => $$req{on_apply}                             # A reference to code that is run *after* the 'apply' method is called
-          , on_undo                 => $$req{on_undo}                              # A reference to code that is run *after* teh 'undo' method is called
-          , on_changed              => $$req{on_changed}                           # A reference to code that is run *every* time a managed field is changed
-          , on_initial_changed      => $$req{on_initial_changed}                   # A reference to code that is run when the recordset status *initially* changes to CHANGED 
-          , auto_apply              => $$req{auto_apply}                           # Boolean to force all records to be applied automatically when querying, closing, etc
-          , calc_fields             => $$req{calc_fields}                          # Calculated field definitions
-          , defaults                => $$req{defaults}                             # Default values
-          , disable_find            => $$req{disable_find} || FALSE                # Do we build the right-click 'find' item on GtkEntrys?
-          , disable_full_table_find => $$req{disable_full_table_find} || FALSE     # Can the user search the whole table ( sql=>{from} ) or only the current recordset?
-          , combos                  => $$req{combos}                               # Definitions to set up combos
-          , autocompletions         => $$req{autocompletions}                      # Definitions to set up autocompletions
-          , data_lock_field         => $$req{data_lock_field} || undef             # A field to use as a data-driven lock ( positive values will lock the record )
-          , status_name             => $$req{status_name}                          # The name of a field to use as the record status indicator
-          , spinner_name            => $$req{spinner_name}                         # The name of a GtkSpinButton to use as the RecordSpinner
-          , quiet                   => $$req{quiet} || FALSE                       # A flag to silence warnings such as missing widgets
-          , friendly_table_name     => $$req{friendly_table_name}                  # Table name to use when issuing GUI errors
-          , custom_changed_text     => $$req{custom_changed_text}                  # Text ( including markup ) to use in GUI questions when changes need to be applied
-          , changed                 => FALSE                                       # A flag indicating that the current record has been changed
-          , changelock              => FALSE                                       # Prevents the 'changed' flag from being set when we're moving records
-          , constructor_done        => FALSE                                       # A flag that indicates whether the new() method has completed yet
-          , debug                   => $$req{debug} || FALSE                       # Dump info to terminal
-          , skip_query              => $$req{skip_query}                           # Don't call query() in the constructor
-          , dont_update_keys        => $$req{dont_update_keys}                     # Don't include primary keys in update statements
-          , widget_prefix           => $$req{widget_prefix}                        # A string to prefix ( builder ) widget names with when searching for them
-          , auto_incrementing       => $$req{auto_incrementing}                    # A flag to indicate whether we should try to poll the last inserted ID after an insert
-          , recordset_tools_box     => $$req{recordset_tools_box}                  # A box to create recordset tools in ( add / insert / update / delete / undo / spinnner )
-          , recordset_tool_items    => $$req{recordset_tool_items}                 # An array of item names to add to the recordset tools box
+            dbh                         => $$req{dbh}                                  # A database handle
+          , primary_keys                => $$req{primary_keys}                         # An array of primary keys
+          , sql                         => $$req{sql}                                  # A hash of SQL related stuff
+          , widgets                     => $$req{widgets}                              # A hash of field definitions and stuff
+          , schema                      => $$req{schema}                               # The 'schema' to use to get column info from
+          , builder                     => $$req{builder}                              # The Gtk3-Builder object ... use either this or 'form', below
+          , read_only                   => $$req{read_only} || FALSE                   # Whether changes to the table are allowed
+          , apeture                     => $$req{apeture} || 100                       # The number of records to select at a time
+          , on_current                  => $$req{on_current}                           # A reference to code that is run when we move to a new record
+          , before_query                => $$req{before_query}                         # A reference to code that is run *before* a query is executed ( can abort the query )
+          , before_insert               => $$req{before_insert}                        # A reference to code that is run *before* an insert to the in-memory recordset ( can abort )
+          , before_apply                => $$req{before_apply}                         # A reference to code that is run *before* the 'apply' method is called
+          , on_apply                    => $$req{on_apply}                             # A reference to code that is run *after* the 'apply' method is called
+          , on_undo                     => $$req{on_undo}                              # A reference to code that is run *after* teh 'undo' method is called
+          , on_changed                  => $$req{on_changed}                           # A reference to code that is run *every* time a managed field is changed
+          , on_initial_changed          => $$req{on_initial_changed}                   # A reference to code that is run when the recordset status *initially* changes to CHANGED 
+          , auto_apply                  => $$req{auto_apply}                           # Boolean to force all records to be applied automatically when querying, closing, etc
+          , calc_fields                 => $$req{calc_fields}                          # Calculated field definitions
+          , defaults                    => $$req{defaults}                             # Default values
+          , disable_find                => $$req{disable_find} || FALSE                # Do we build the right-click 'find' item on GtkEntrys?
+          , disable_full_table_find     => $$req{disable_full_table_find} || FALSE     # Can the user search the whole table ( sql=>{from} ) or only the current recordset?
+          , combos                      => $$req{combos}                               # Definitions to set up combos
+          , autocompletions             => $$req{autocompletions}                      # Definitions to set up autocompletions
+          , data_lock_field             => $$req{data_lock_field} || undef             # A field to use as a data-driven lock ( positive values will lock the record )
+          , status_name                 => $$req{status_name}                          # The name of a field to use as the record status indicator
+          , spinner_name                => $$req{spinner_name}                         # The name of a GtkSpinButton to use as the RecordSpinner
+          , quiet                       => $$req{quiet} || FALSE                       # A flag to silence warnings such as missing widgets
+          , friendly_table_name         => $$req{friendly_table_name}                  # Table name to use when issuing GUI errors
+          , custom_changed_text         => $$req{custom_changed_text}                  # Text ( including markup ) to use in GUI questions when changes need to be applied
+          , changed                     => FALSE                                       # A flag indicating that the current record has been changed
+          , changelock                  => FALSE                                       # Prevents the 'changed' flag from being set when we're moving records
+          , constructor_done            => FALSE                                       # A flag that indicates whether the new() method has completed yet
+          , debug                       => $$req{debug} || FALSE                       # Dump info to terminal
+          , skip_query                  => $$req{skip_query}                           # Don't call query() in the constructor
+          , dont_update_keys            => $$req{dont_update_keys}                     # Don't include primary keys in update statements
+          , use_compat_filter_clause    => $$req{use_compat_filter_clause}             # Build brain-dead filters for DBs that don't support mult-column 'in' clauses
+          , widget_prefix               => $$req{widget_prefix}                        # A string to prefix ( builder ) widget names with when searching for them
+          , auto_incrementing           => $$req{auto_incrementing}                    # A flag to indicate whether we should try to poll the last inserted ID after an insert
+          , recordset_tools_box         => $$req{recordset_tools_box}                  # A box to create recordset tools in ( add / insert / update / delete / undo / spinnner )
+          , recordset_tool_items        => $$req{recordset_tool_items}                 # An array of item names to add to the recordset tools box
         };
         
     } else {
@@ -91,6 +93,51 @@ sub new {
         foreach my $combo ( keys %{$self->{combos}} ) {
             $self->{combos}->{$combo}->{alternate_dbh} = $xml_options->{connections}->{ $self->{combos}->{$combo}->{connection_name} };
         }
+        
+    }
+    
+    # Check we've been passed enough stuff to continue ...
+    
+    if ( ! $self->{dbh} ) {
+        croak( "Gtk3::Ex::DBI::Form constructor missing a dbh!\n" );
+    }
+    
+    if ( ! $self->{builder} ) {
+        croak( "Gtk3::Ex::DBI::Form constructor missing a 'builder' ( Gtk3::Builder ) ..." );
+    } elsif ( ref $self->{builder} ne "Gtk3::Builder" ) {
+        croak( "Gtk3::Ex::DBI::Form constructor contains a 'builder' ... but it's not a Gtk3::Builder!" );
+    }
+    
+    # TODO: complete
+    # Decide what class of Gtk3::Ex::DBI to construct ...
+    $self->{server} = $self->{dbh}->get_info( 17 );
+    
+    my $dbi_manager_class = 'Gtk3::Ex::DBI';
+    
+    # Some database-specific stuff
+    if ( $self->{server} =~ /postgres/i ) {
+        
+        $dbi_manager_class = 'Gtk3::Ex::Postgres';
+        
+        if ( ! $self->{search_path} ) {
+            if ( $self->{schema} ) {
+                $self->{search_path} = $self->{schema} . ",public";
+            } else {
+                $self->{search_path} = "public";
+            }
+        }
+        my $sth = $self->{dbh}->prepare ( "SET search_path to " . $self->{search_path} );
+        eval {
+            $sth->execute or die $self->{dbh}->errstr;
+        };
+        if ( $@ ) {
+            carp( "Failed to set search_path to " . $self->{search_path}
+                . " for a Postgres database. I'm not sure what the implications of this are. Postgres users, please report ...\n" );
+        }
+        
+    } elsif ( $self->{server} =~ /netezza/i ) {
+        
+        $self->{use_compat_filter_clause} = 1;
         
     }
     
@@ -121,18 +168,6 @@ sub new {
     
     if ( $self->{debug} ) {
         print "\nGtk3::Ex::DBI::Form version $Gtk3::Ex::DBI::Form::VERSION initialising ...\n\n";
-    }
-    
-    # Check we've been passed enough stuff to continue ...
-    
-    if ( ! $self->{dbh} ) {
-        croak( "Gtk3::Ex::DBI::Form constructor missing a dbh!\n" );
-    }
-    
-    if ( ! $self->{builder} ) {
-        croak( "Gtk3::Ex::DBI::Form constructor missing a 'builder' ( Gtk3::Builder ) ..." );
-    } elsif ( ref $self->{builder} ne "Gtk3::Builder" ) {
-        croak( "Gtk3::Ex::DBI::Form constructor contains a 'builder' ... but it's not a Gtk3::Builder!" );
     }
     
     foreach my $item ( $self->{builder}->get_objects() ) {
@@ -170,13 +205,14 @@ sub new {
         delete $self->{data_lock_field};
     }
     
+    if ( $self->{status_name} ) {
+        $self->{status_label} = $self->{builder}->get_object( $self->{status_name} );
+    }
+    
     # Set the table name to use for GUI errors
     if ( ! $self->{friendly_table_name} ) {
         $self->{friendly_table_name} = $self->{sql}->{from};
     }
-    
-    # We have some work-arounds for different DB servers ...
-    $self->{server} = $self->{dbh}->get_info( 17 );
     
     # Set up combo box models
     foreach my $combo ( keys %{$self->{combos}} ) {
@@ -194,27 +230,6 @@ sub new {
     
     # NOTE The code below that constructs the widgets hash has been copied into axis::form_editor
     # Please make sure any changes here also get reflected there
-    
-    # TODO Should we move this code to a central location instead of having 2 copies?
-    
-    # Some PostGreSQL stuff - DLB
-    if ( $self->{server} =~ /postgres/i ) {
-        if ( ! $self->{search_path} ) {
-            if ( $self->{schema} ) {
-                $self->{search_path} = $self->{schema} . ",public";
-            } else {
-                $self->{search_path} = "public";
-            }
-        }
-        my $sth = $self->{dbh}->prepare ( "SET search_path to " . $self->{search_path} );
-        eval {
-            $sth->execute or die $self->{dbh}->errstr;
-        };
-        if ( $@ ) {
-            carp( "Failed to set search_path to " . $self->{search_path}
-                . " for a Postgres database. I'm not sure what the implications of this are. Postgres users, please report ...\n" );
-        }
-    }
     
     if ( $self->{widgets} && ! $self->{sql}->{select} && ! $self->{sql}->{pass_through} ) {
         
@@ -825,12 +840,12 @@ sub query {
         
         while ( my @row = $sth->fetchrow_array ) {
             my $key_no = 0;
-            my @keys;
+            my $keys;
             foreach my $primary_key ( @{$self->{primary_keys}} ) {
-                push @keys, $row[$key_no];
+                push @{$keys}, $row[$key_no];
                 $key_no ++;
             }
-            push @{$self->{keyset}}, @keys;   
+            push @{$self->{keyset}}, $keys;   
         }
         
         $sth->finish;
@@ -1125,7 +1140,14 @@ sub fetch_new_slice {
         }
         
         $local_sql .= " from " . $self->{sql}->{from}
-            . " where ( " . join( ', ', @{$self->{primary_keys}} ) . " ) in (\n";
+            . " where ( ";
+        
+        # TODO: break out into classes. This is getting messy
+        if ( ! $self->{use_compat_filter_clause} ) {
+            
+            $local_sql .= join( ', ', @{$self->{primary_keys}} ) . " ) in (\n";
+            
+        }
         
         # The where clause we're trying to build should look like:
         #
@@ -1140,14 +1162,42 @@ sub fetch_new_slice {
         # instead of directly injecting values into the where clause, otherwise we have nasty 
         # SQL injection issues ...
         
-        my ( @key_placeholder_strings, @key_values );
+        my ( @key_placeholder_strings, $key_values );
         
-        for ( my $counter = $lower; $counter < $upper+1; $counter++ ) {
-            push @key_placeholder_strings, " ( " . '?' x @{$self->{primary_keys}} . " )";
-            push @key_values, $self->{keyset}[$counter]; # This is an array of keys for the current record
+        for ( my $counter = $lower; $counter < $upper + 1; $counter ++ ) {
+            
+            # TODO: break out into classes. This is getting messy
+            
+            if ( ! $self->{use_compat_filter_clause} ) {
+                
+                my @these_placeholders = ( "?" ) x @{$self->{primary_keys}};
+                push @key_placeholder_strings, " ( " . join( " , ", @these_placeholders ) . " )";
+                push @{$key_values}, @{$self->{keyset}[$counter]}; # This is an array of keys for the current record
+                
+            } else {
+                
+                my @this_filter_set;
+                
+                foreach my $key ( @{$self->{primary_keys}} ) {
+                     push @this_filter_set, "$key = ?";
+                }
+                
+                push @key_placeholder_strings, " ( " . join( " and ", @this_filter_set ) . " )";
+                push @{$key_values}, @{$self->{keyset}[$counter]}; # This is an array of keys for the current record
+                
+            }
+            
         }
         
-        $local_sql .= join( "\n  , ", @key_placeholder_strings ) . "\n)";
+        if ( ! $self->{use_compat_filter_clause} ) {
+            
+            $local_sql .= join( "\n  , ", @key_placeholder_strings ) . "\n)";
+            
+        } else {
+            
+            $local_sql .= join( "\n or ", @key_placeholder_strings ) . "\n)";
+            
+        }
         
         if ( $self->{sql}->{order_by} ) {
             $local_sql .= "\norder by " . $self->{sql}->{order_by};
@@ -1159,7 +1209,7 @@ sub fetch_new_slice {
               , {
                     Slice => {}
                 }
-              , @key_values
+              , @{$key_values}
             ) || croak( $self->{dbh}->errstr . "\n\nLocal SQL was:\n$local_sql" );
         };
         
@@ -1248,9 +1298,6 @@ sub apply {
             
         }
         
-#        # TODO Remove dodged-up multi-widget support
-#        my $widget = $self->get_widget( $fieldname ) || $self->get_widget( $fieldname . "_" . "hh" );
-#        
 #        # TODO Document read-only labels
 #        if ( defined $widget && ref $widget ne "Gtk3::Label" ) { # Labels are read-only
             push @fieldlist, $sql_fieldname;
@@ -1269,7 +1316,7 @@ sub apply {
     } else {
         
         $update_sql = "update " . $self->{sql}->{from} . " set " . join( "=?, ", @fieldlist ) . "=? where "
-            . join( "=? and", @{$self->{primary_keys}} ) . "=?";
+            . join( "=? and ", @{$self->{primary_keys}} ) . "=?";
         
         foreach my $primary_key ( @{$self->{primary_keys}} ) {
             push @bind_values, $self->{records}[$self->{slice_position}]->{ $self->{sql_to_widget_map}->{$primary_key} };
@@ -1278,6 +1325,7 @@ sub apply {
     }
     
     if ( $self->{debug} ) {
+        
         print "Final SQL:\n\n$update_sql\n\n";
         
         my $counter = 0;
@@ -1287,6 +1335,7 @@ sub apply {
             print " " x ( 20 - length( $fieldlist[$counter] ) ) . $fieldlist[$counter] . ": $value\n";
             $counter ++;
         }
+        
     }
     
     my $sth;
@@ -1446,8 +1495,18 @@ sub changed {
                 
                 $self->{changed} = TRUE; # We need to set this now, otherwise recursion occurs
                 
-                # If we're inserting, scan for sequences
                 if ( $self->{inserting} ) {
+                    
+                    # Run 'before_insert' code
+                    if ( $self->{before_insert} ) {
+                        # Execute on_initial_changed code ( only for the *initial* change of recordset status )
+                        if ( ! $self->{before_insert}() ) {
+                            $self->undo;
+                            return FALSE;
+                        }
+                    }
+                    
+                    # If we're inserting, scan for sequences
                     foreach my $widget_name ( keys %{$self->{widgets}} ) {
                         my $widget = $self->{widgets}->{$widget_name};
                         if ( exists $widget->{sequence_sql} ) {
@@ -1490,7 +1549,7 @@ sub changed {
             if ( $self->{on_changed} ) {
                 # ... and also any on_changed code, which gets executed for EVERY change in data
                 # ... ( ie not recordset status )
-                $self->{on_changed}();
+                $self->{on_changed}( $fieldname );
             }
             
         }
@@ -1598,7 +1657,7 @@ sub delete {
     my $self = shift;
     
     my $sth = $self->{dbh}->prepare( "delete from " . $self->{sql}->{from} . " where "
-        . join( "=? and", @{$self->{primary_keys}} ) . "=?" );
+        . join( "=? and ", @{$self->{primary_keys}} ) . "=?" );
     
     my @bind_values;
     
@@ -3644,7 +3703,8 @@ without applying changes, which will call undo()
 =over 4
 
 A reference to some Perl code that runs *every* time the changed signal is fired.
-Be careful - it's fired a LOT, eg every keypress event in entry widgets, etc
+Be careful - it's fired a LOT, eg every keypress event in entry widgets, etc.
+Your code will receive the fieldname that triggered the event.
 
 =back 
 
