@@ -738,7 +738,8 @@ sub setup_treeview {
             }
             
             if ( $field->{wrap_text} ) {
-                $renderer->set( 'wrap-mode', 'word' );
+                #$renderer->set( 'wrap-mode', 'word' );
+                $renderer->set( 'wrap-width', 30 );
             }
             
             $field->{ $treeview_type . "_column" } = Gtk3::TreeViewColumn->new_with_attributes(
@@ -3846,6 +3847,8 @@ sub select_rows {
         }
     }
     
+    my $matched_rows = 0;
+    
     while ( $iter ) {
         my $this_value = $model->get( $iter, $conditions->{column_no} );
         if ( $self->{fields}[$conditions->{column_no}]->{treeview_column}->{definition}->{number}->{currency}
@@ -3855,18 +3858,22 @@ sub select_rows {
         if ( $conditions->{operator} eq "==" ) {
             if ( $this_value == $conditions->{value} ) {
                 $self->{treeview}->get_selection->select_iter( $iter );
+                $matched_rows ++;
             }
         } elsif ( $conditions->{operator} eq "<" ) {
             if ( $this_value < $conditions->{value} ) {
                 $self->{treeview}->get_selection->select_iter( $iter );
+                $matched_rows ++;
             }
         } elsif ( $conditions->{operator} eq ">" ) {
             if ( $this_value > $conditions->{value} ) {
                 $self->{treeview}->get_selection->select_iter( $iter );
+                $matched_rows ++;
             }
         } elsif ( $conditions->{operator} eq "eq" ) {
             if ( $this_value eq $conditions->{value} ) {
                 $self->{treeview}->get_selection->select_iter( $iter );
+                $matched_rows ++;
             }
         } else {
             warn "Gtk3::Ex::DBI::Datasheet->select_rows() called with an invalid operator in the condition ...\n"
@@ -3876,6 +3883,8 @@ sub select_rows {
             last;
         }
     }
+    
+    return $matched_rows;
     
 }
 
