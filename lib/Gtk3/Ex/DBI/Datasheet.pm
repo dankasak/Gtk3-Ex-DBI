@@ -1253,7 +1253,7 @@ sub setup_treeview {
         }
     }
     
-    $self->{ $treeview_type . "_resize_signal" } = $self->{ $treeview_type }->signal_connect(
+    $self->{ $treeview_type . "_resize_signal" } = $self->{ $treeview_type }->signal_connect_after(
         size_allocate => sub { $self->on_size_allocate( @_, $treeview_type ) } );
     
     push @{$self->{objects_and_signals}},
@@ -2264,9 +2264,6 @@ sub apply {
                 return FALSE;
             };
             
-            # Remember iter for deletion later
-            push @iters_to_remove, $iter;
-            
         } else {
             
             # We process the insert / update operations in a similar fashion
@@ -2418,44 +2415,46 @@ sub apply {
             
             $model->signal_handler_unblock( $self->{changed_signal} );
             
-            # Execute user-defined functions
-            if ( $self->{on_apply} ) {
-                
-                # Better change the status indicator back into text, rather than make
-                # people use our constants. I think, anyway ...
-                my $status_txt;
-                
-                if ( $status            == INSERTED ) {
-                    $status_txt         = "inserted";
-                } elsif ( $status       == CHANGED ) {
-                     $status_txt        = "changed";
-                } elsif ( $status       == DELETED ) {
-                    $status_txt         = "deleted";
-                }
-                
-                # Do people want the whole row? I don't. Maybe others would? Wait for requests...
-                $self->{on_apply}(
-                    {
-                        status        => $status_txt,
-                        primary_keys  => $primary_keys,
-                        model         => $model,
-                        iter          => $iter
-                    }
-                );
-                
+        }
+        
+        # Execute user-defined functions
+        if ( $self->{on_apply} ) {
+            
+            # Better change the status indicator back into text, rather than make
+            # people use our constants. I think, anyway ...
+            my $status_txt;
+            
+            if ( $status            == INSERTED ) {
+                $status_txt         = "inserted";
+            } elsif ( $status       == CHANGED ) {
+                 $status_txt        = "changed";
+            } elsif ( $status       == DELETED ) {
+                $status_txt         = "deleted";
             }
             
+            # Do people want the whole row? I don't. Maybe others would? Wait for requests...
+            $self->{on_apply}(
+                {
+                    status        => $status_txt,
+                    primary_keys  => $primary_keys,
+                    model         => $model,
+                    iter          => $iter
+                }
+            );
+            
+        }
+        
+        if ( $status == DELETED ) {
+            # Delete row from treeview - Gtk3 doesn't like us storing these iters for
+            # later removal, so we have to do it now, or convert it to a treepath or some BS
+            # Note that this MUST happen after the on_apply() code, above
+            $model->remove( $iter );
         }
         
         if ( ! $model->iter_next( $iter ) ) {
             last;
         }
         
-    }
-    
-    # Delete queued iters ( that were marked as DELETED )
-    foreach $iter ( @iters_to_remove ) {
-        $model->remove( $iter );
     }
     
     return TRUE;
