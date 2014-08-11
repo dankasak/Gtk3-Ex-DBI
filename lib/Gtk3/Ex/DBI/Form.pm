@@ -44,6 +44,7 @@ sub new {
           , before_insert               => $$req{before_insert}                        # A reference to code that is run *before* an insert to the in-memory recordset ( can abort )
           , before_apply                => $$req{before_apply}                         # A reference to code that is run *before* the 'apply' method is called
           , on_apply                    => $$req{on_apply}                             # A reference to code that is run *after* the 'apply' method is called
+          , on_delete                   => $$req{on_delete}                            # A reference to code that is run *after* the 'delete' method is called
           , on_undo                     => $$req{on_undo}                              # A reference to code that is run *after* teh 'undo' method is called
           , on_changed                  => $$req{on_changed}                           # A reference to code that is run *every* time a managed field is changed
           , on_initial_changed          => $$req{on_initial_changed}                   # A reference to code that is run when the recordset status *initially* changes to CHANGED 
@@ -1700,6 +1701,10 @@ sub delete {
     
     $self->set_record_spinner_range;
     
+    if ( $self->{on_delete} ) {
+        $self->{on_delete}();
+    }
+    
 }
 
 sub lock {
@@ -2399,9 +2404,11 @@ sub set_widget_value {
         
         no warnings 'uninitialized';
         
-        if ( ! $self->{quiet} && $fieldname ne $self->{primary_key} ) { # TODO: port to multi column primary keys
-            # We don't warn on a missing primary key *widget*, as this is perfectly safe
-            # ( updates use the in-memory primary key )
+        if (
+                ! $self->{quiet}
+             && ! grep( /^$fieldname$/, @{$self->{primary_key}} ) # ( updates use the in-memory primary key )
+        ) {
+            
             carp( 'Form [' . $self->{frieldly_table_name} . "] field [$fieldname] is missing a widget" );
             return FALSE;
         }
@@ -2455,7 +2462,7 @@ sub set_widget_value {
         
         # See http://bugzilla.gnome.org/show_bug.cgi?id=149248
         
-        # TODO Broken Gtk2 combo box entry workaround
+        # TODO Broken Gtk combo box entry workaround
         # If we can't get above bug resolved, perhaps load the ID / value pairs into something
         # that supports rapid searching so we don't have to loop through the entire list, which
         # could be *very* slow if the list is large
@@ -3220,57 +3227,6 @@ sub calculator_process_editing {
 
 Gtk3::Ex::DBI::Form - Bind a Gtk3::Builder - generated window to a DBI data source
 
-=head1 SYNOPSIS
-
-use DBI;
-use Gtk3 -init;
-use Gtk3::GladeXML;
-use Gtk3::Ex::DBI::Form; 
-
-my $dbh = DBI->connect (
-                          "dbi:mysql:dbname=sales;host=screamer;port=3306",
-                          "some_username",
-                          "salespass", {
-                                           PrintError => 0,
-                                           RaiseError => 0,
-                                           AutoCommit => 1,
-                                       }
-);
-
-# TODO: update"
-my $prospects_form = Gtk2::GladeXML->new("/path/to/glade/file/my_form.glade", 'Prospects');
-
-my $data_handler = Gtk3::Ex::DBI::Form->new( {
-            dbh         => $dbh,
-            schema      => "sales",
-            sql         => {
-                              select       => "*",
-                              from         => "Prospects",
-                              where        => "Actve=? and Employees>?",
-                              bind_values  => [ 1, 200 ],
-                              order_by     => "ClientName",
-                           },
-            form        => $prospects,
-            on_current  => \&Prospects_current,
-            calc_fields =>
-            {
-                        calc_total => 'eval { $self->{form}->get_widget("value_1")->get_text
-                            + $self->{form}->get_widget("value_2")->get_text }'
-            },
-            default_values     =>
-            {
-                        ContractYears  => 5,
-                        Fee            => 2000
-            }
-}
-);
-
-sub Prospects_current {
-
-            # I get called when moving from one record to another ( see on_current key, above )
-
-}
-
 =head1 DESCRIPTION
 
 This module automates the process of tying data from a DBI datasource to widgets on a Glade-generated form.
@@ -3278,17 +3234,8 @@ All that is required is that you name your widgets the same as the fields in you
 You have to set up combo boxes ( ie create your Gtk3::ListStore and
 attach it to your combo box ) *before* creating your Gtk3::Ex::DBI::Form object.
 
-Steps for use:
-
-* Open a DBI connection
-
-# TODO: update
-* Create a Gtk2::GladeXML object ( form )
-
-* Create a Gtk3::Ex::DBI::Form object and link it to your form
-
-You would then typically create some buttons and connect them to the methods below to handle common actions
-such as inserting, moving, deleting, etc.
+Please see more verbose description and documentation at:
+http://tesla.duckdns.org
 
 =head1 METHODS
 
@@ -3535,11 +3482,11 @@ a DBI database handle
 
 =back
 
-=head2 form
+=head2 builder
 
 =over 4
 
-the Gtk2::GladeXML object that created your form
+the Gtk3::Builder object
 
 =back
 
@@ -3813,7 +3760,7 @@ A flag to silence warnings such as missing widgets
 =over 4
 
 The name of a label to use to indicate the record status. This is especially useful if you have
-more than 1 Gtk3::Ex::DBI::Form object bound to a single Gtk2::GladeXML object
+more than 1 Gtk3::Ex::DBI::Form object bound to a single window
 
 =back
 
@@ -3946,10 +3893,8 @@ back to the database.
 
 =head1 COMBOS
 
-Gtk3::Ex::DBI::Form uses the GtkComboBoxEntry widget, which is available in gtk 2.4 and above.
-To populate the list of options, a model ( Gtk2::ListStore ) is attached to the combo.
-Gtk::Ex::DBI expects this model to have the ID in the 1st column, and the String column 2nd column.
-You can pack as many other columns in as you like ... at least for now :)
+To populate the list of options, a model ( Gtk3::ListStore ) is attached to the combo.
+This model is expected to have the ID in the 1st column, and the String column 2nd column.
 
 If you choose to set up each combo's model yourself, you *must* do this before constructing your
 Gtk3::Ex::DBI::Form object.
@@ -4056,7 +4001,7 @@ The SQL fieldname / expression
 
 =over 4
 
-The ( Glib ) type of column to create for this field in the Gtk2::ListStore. Possible values are
+The ( Glib ) type of column to create for this field in the Gtk3::ListStore. Possible values are
 Glib::Int and Glib::String.
 
 =back
