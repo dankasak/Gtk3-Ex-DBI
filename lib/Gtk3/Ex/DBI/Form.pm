@@ -18,7 +18,7 @@ use Time::HiRes;
 use Glib qw/TRUE FALSE/;
 
 BEGIN {
-    $Gtk3::Ex::DBI::Form::VERSION = '3.0';
+    $Gtk3::Ex::DBI::Form::VERSION = '3.1';
 }
 
 sub new {

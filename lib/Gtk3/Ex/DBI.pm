@@ -9,6 +9,10 @@ use Glib qw ' TRUE FALSE ';
 # There isn't much in here yet - I've only just decided to merge both
 # projects into 1
 
+BEGIN {
+    $Gtk3::Ex::DBI::VERSION = '3.1';
+}
+
 sub setup_recordset_tools {
     
     my $self = shift;

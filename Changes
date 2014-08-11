@@ -1,6 +1,16 @@
 CHANGELOG
 
-Version 2.2, released xx-xxx-2007
+Version 3.1
+
+    Port to Gtk3
+    Netezza support
+    Proper support for non-autoincrementing primary keys
+    Merged Form and Datasheet code into 1 bundle
+    Support for creating recordset toolbox, including buttons for apply, delete, etc, and record navigation
+    Internal dialog code ( not dependent on Gtk2::Ex::Dialogs any more )
+    Many other years of hacks and features
+    
+Version 2.2, not released
     Look for an SQL alias widget before checking for the primary key in apply()
     Use $widget->set_value() for Gtk2::SpinButton, or some strange stuff happens to invisible widgets
     Warn if set_widget_value() fails for combos because a value wan't in the model

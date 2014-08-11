@@ -36,7 +36,7 @@ use constant {
 };
 
 BEGIN {
-    $Gtk3::Ex::DBI::Datasheet::VERSION                          = '3.0';
+    $Gtk3::Ex::DBI::Datasheet::VERSION                          = '3.1';
 }
 
 sub new {
