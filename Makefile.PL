@@ -2,8 +2,8 @@ use 5.008000;
 use ExtUtils::MakeMaker;
 
 WriteMakefile(
-		NAME		=> 'Gtk3::Ex::DBI::Form',
-		VERSION_FROM	=> 'lib/Gtk3/Ex/DBI/Form.pm',
+		NAME		=> 'Gtk3::Ex::DBI',
+		VERSION_FROM	=> 'lib/Gtk3/Ex/DBI.pm',
 		PREREQ_PM	=> {
 					'Gtk3'				=> 0.01,
 					'DBI'				=> 1.30
