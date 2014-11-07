@@ -2234,14 +2234,16 @@ sub apply {
             
             my @values;
             
-            my $sql = "delete from " . $self->{sql}->{from} . " where ";# . $self->{primary_key} . "=?";
+            my $sql = "delete from " . $self->{sql}->{from} . " where ";
+            
+            my @keys;
             
             foreach my $primary_key_item ( keys %{$primary_keys} ) {
-                $sql .= "$primary_key_item=?,";
+                push @keys,   "$primary_key_item = ?";
                 push @values, $primary_keys->{$primary_key_item};
             }
             
-            chop( $sql );
+            $sql .= join( ' and ', @keys );
             
             my $sth = $self->{dbh}->prepare( $sql );
             
