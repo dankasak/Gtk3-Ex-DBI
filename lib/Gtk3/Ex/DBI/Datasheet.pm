@@ -2341,17 +2341,27 @@ sub apply {
             chop( $sql_fields );
             
             if ( $status == INSERTED ) {
+                
                 chop( $placeholders );
                 $sql = "insert into " . $self->{sql}->{from} . " ( $sql_fields ) values ( $placeholders )";
+                
             } elsif ( $status == CHANGED ) {
+                
                 $sql = "update " . $self->{sql}->{from} . " set $sql_fields where ";
+                
+                my @keys;
+            
                 foreach my $primary_key_item ( keys %{$primary_keys} ) {
-                    $sql .= "$primary_key_item=?,";
+                    push @keys,   "$primary_key_item = ?";
                     push @values, $primary_keys->{$primary_key_item};
                 }
-                chop( $sql );
+                
+                $sql .= join( ' and ', @keys );
+                
             } else {
-                warn "WTF? Unknown status: $status in status column! Skipping ...\n";
+                
+                warn "Unknown status: $status in status column! Skipping ...\n";
+                
             }
             
             my $sth;
