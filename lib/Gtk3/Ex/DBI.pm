@@ -10,12 +10,12 @@ use Glib qw ' TRUE FALSE ';
 # projects into 1
 
 BEGIN {
-    $Gtk3::Ex::DBI::VERSION = '3.1';
+    $Gtk3::Ex::DBI::VERSION = '3.2';
 }
 
 sub setup_recordset_tools {
     
-    my $self = shift;
+    my ( $self, $options ) = @_;
     
     my $items_to_add;
     
@@ -29,7 +29,8 @@ sub setup_recordset_tools {
         
         no warnings 'uninitialized';
         
-        my $this_item = $self->{supported_recordset_items}->{ $item };
+        my $this_item = $self->{supported_recordset_items}->{ $item } ? $self->{supported_recordset_items}->{ $item }
+                                                                      : $self->{recordset_extra_tools}->{ $item };
         
         if ( $this_item->{type} eq 'spinner' ) {
             
@@ -39,19 +40,46 @@ sub setup_recordset_tools {
             
         } elsif ( $this_item->{type} eq 'label' ) {
             
-            $self->{status_label} = Gtk3::Label->new;
+            $self->{status_label} = Gtk3::Label->new( '' );
+            $self->{status_label}->set( 'width-request', 100 );
             $self->{recordset_tools_box}->pack_start( $self->{status_label}, TRUE, TRUE, 2 );
             
         } elsif ( $this_item->{type} eq 'button' ) {
             
-            my $button = Gtk3::Button->new_with_label( $item );
+            my $button = Gtk3::Button->new();
+            
+            my $label = Gtk3::Label->new( '' );
+            
+            if ( $this_item->{markup} ) {
+                $label->set_markup( $this_item->{markup} );
+            } else {
+                $label->set_text( $item );
+            }
+            
             my $icon   = Gtk3::Image->new_from_icon_name( $this_item->{icon_name}, "button" );
-            $button->set_image( $icon );
-            $button->set( 'always-show-image', TRUE );
-            $button->signal_connect( 'button-press-event', sub { $self->$item } );
+            
+            my $box = Gtk3::Box->new( 'GTK_ORIENTATION_HORIZONTAL', 0 );
+            
+            eval { # barfs on older gtk
+                $label->set_xalign( 0 );
+                $icon->set( 'halign', 'GTK_ALIGN_END' );
+            };
+            
+            $box->pack_start( $icon, TRUE, TRUE, 2 );
+            $box->pack_end( $label, TRUE, TRUE, 2 );
+            
+            $button->add( $box );
+            
+            if ( exists $this_item->{coderef} ) {
+                $button->signal_connect( 'button-press-event', sub { $this_item->{coderef}() } );
+            } else {
+                $button->signal_connect( 'button-press-event', sub { $self->$item } );
+            }
+            
             $self->{recordset_tools_box}->pack_start( $button, TRUE, TRUE, 2 );
             
         }
+        
     }
     
     $self->{recordset_tools_box}->show_all;
@@ -102,6 +130,55 @@ sub dialog {
     $dialog->destroy;
     
     return $response;
+    
+}
+
+sub file_chooser {
+    
+    my ( $self, $options ) = @_;
+    
+    my $action;
+    
+    if ( $options->{action} eq 'save' ) {
+        $action = 'GTK_FILE_CHOOSER_ACTION_SAVE';
+    } elsif ( $options->{action} eq 'folder' ) {
+        $action = 'GTK_FILE_CHOOSER_ACTION_CREATE_FOLDER'; 
+    } else {
+        $action = 'GTK_FILE_CHOOSER_ACTION_OPEN';
+    }
+    
+    my $dialog = Gtk3::FileChooserDialog->new(
+        $options->{title} ? $options->{title} : 'Choose ...'
+      , $options->{parent_window}
+      , $action 
+      , 'Accept' , 1
+      , 'Cancel' , 0
+    );
+    
+    if ( $options->{path} ) {
+        $dialog->set_current_folder( $options->{path} );
+    }
+    
+    $dialog->show_all;
+    
+    my $response = $dialog->run;
+    
+    if ( $response == 0 ) {
+        $dialog->destroy;
+        return undef;
+    }
+    
+    my $return;
+    
+    if ( $options->{type} eq 'file' ) {
+        $return = $dialog->get_filename;
+    } else {
+        $return = $dialog->get_current_folder;
+    }
+    
+    $dialog->destroy;
+    
+    return $return;
     
 }
 

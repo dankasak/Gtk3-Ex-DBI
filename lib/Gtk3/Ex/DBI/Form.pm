@@ -18,7 +18,7 @@ use Time::HiRes;
 use Glib qw/TRUE FALSE/;
 
 BEGIN {
-    $Gtk3::Ex::DBI::Form::VERSION = '3.1';
+    $Gtk3::Ex::DBI::Form::VERSION = '3.2';
 }
 
 sub new {
@@ -35,6 +35,7 @@ sub new {
           , primary_keys                => $$req{primary_keys}                         # An array of primary keys
           , sql                         => $$req{sql}                                  # A hash of SQL related stuff
           , widgets                     => $$req{widgets}                              # A hash of field definitions and stuff
+          , force_upper_case_fields     => $$req{force_upper_case_fields}              # Forces fieldnames to be upper-case ( set this to match upper-case glade object names )
           , schema                      => $$req{schema}                               # The 'schema' to use to get column info from
           , builder                     => $$req{builder}                              # The Gtk3-Builder object ... use either this or 'form', below
           , read_only                   => $$req{read_only} || FALSE                   # Whether changes to the table are allowed
@@ -42,6 +43,7 @@ sub new {
           , on_current                  => $$req{on_current}                           # A reference to code that is run when we move to a new record
           , before_query                => $$req{before_query}                         # A reference to code that is run *before* a query is executed ( can abort the query )
           , before_insert               => $$req{before_insert}                        # A reference to code that is run *before* an insert to the in-memory recordset ( can abort )
+          , before_delete               => $$req{before_delete}                        # A reference to code that is run *before* a record is deleted ( can abort the delete operation )
           , before_apply                => $$req{before_apply}                         # A reference to code that is run *before* the 'apply' method is called
           , on_apply                    => $$req{on_apply}                             # A reference to code that is run *after* the 'apply' method is called
           , on_delete                   => $$req{on_delete}                            # A reference to code that is run *after* the 'delete' method is called
@@ -72,6 +74,7 @@ sub new {
           , auto_incrementing           => $$req{auto_incrementing}                    # A flag to indicate whether we should try to poll the last inserted ID after an insert
           , recordset_tools_box         => $$req{recordset_tools_box}                  # A box to create recordset tools in ( add / insert / update / delete / undo / spinnner )
           , recordset_tool_items        => $$req{recordset_tool_items}                 # An array of item names to add to the recordset tools box
+          , recordset_extra_tools       => $$req{recordset_extra_tools}                # Extra buttons to add to the recordset tools box
         };
         
     } else {
@@ -95,6 +98,10 @@ sub new {
             $self->{combos}->{$combo}->{alternate_dbh} = $xml_options->{connections}->{ $self->{combos}->{$combo}->{connection_name} };
         }
         
+    }
+    
+    if ( $Gtk3::Ex::DBI::USE_COMPAT_FILTER_CLAUSE ) {
+        $self->{use_compat_filter_clause} = 1;
     }
     
     # Check we've been passed enough stuff to continue ...
@@ -312,7 +319,13 @@ sub new {
             return FALSE;
         }
         
-        foreach my $fieldname ( @{$sth->{'NAME'}} ) {
+        my $name_req_string = 'NAME';
+        
+        if ( $self->{force_upper_case_fields} ) {
+            $name_req_string .= '_uc';
+        }
+        
+        foreach my $fieldname ( @{$sth->{ $name_req_string }} ) {
             if ( ! $self->{widgets}->{$fieldname} ) {
                 $self->{widgets}->{$fieldname} = {};
             }
@@ -399,14 +412,24 @@ sub new {
         
     } else {
         
-        while ( my $column_info_row = $sth->fetchrow_hashref ) {
-            # Loop through the list of columns from the database, and
-            # add only columns that we're actually dealing with
-            for my $fieldname ( keys %{$self->{sql_to_widget_map}} ) {
-                if ( $column_info_row->{COLUMN_NAME} eq ( $fieldname ) ) {
-                    # Note that we want to store this against the fieldname and NOT the sql_fieldname
-                    $self->{column_info}->{ $self->{sql_to_widget_map}->{$fieldname} } = $column_info_row;
-                    last;
+        if ( $sth ) {
+            while ( my $column_info_row = $sth->fetchrow_hashref ) {
+                # Loop through the list of columns from the database, and
+                # add only columns that we're actually dealing with
+                for my $fieldname ( keys %{$self->{sql_to_widget_map}} ) {
+                    if ( $self->{force_upper_case_fields} ) {
+                        if ( uc($column_info_row->{COLUMN_NAME}) eq ( $fieldname ) ) {
+                            # Note that we want to store this against the fieldname and NOT the sql_fieldname
+                            $self->{column_info}->{ $self->{sql_to_widget_map}->{$fieldname} } = $column_info_row;
+                            last;
+                        }
+                    } else {
+                        if ( $column_info_row->{COLUMN_NAME} eq ( $fieldname ) ) {
+                            # Note that we want to store this against the fieldname and NOT the sql_fieldname
+                            $self->{column_info}->{ $self->{sql_to_widget_map}->{$fieldname} } = $column_info_row;
+                            last;
+                        }
+                    }
                 }
             }
         }
@@ -502,12 +525,14 @@ sub new {
                 push @signals, $widget->signal_connect_after(
                     day_selected =>                       sub { $self->changed( $fieldname ) } );
                 
-            } elsif ( $type eq "Gtk3::ToggleButton" ) {
+            } elsif ( $type eq "Gtk3::ToggleButton"
+                   || $type eq "Gtk3::RadioButton"
+            ) {
                 
                 push @signals, $widget->signal_connect_after(
                     toggled =>              sub { $self->changed( $fieldname ) } );
                 
-            } elsif ( $type eq "Gtk3::TextView" ) {
+            } elsif ( $type eq "Gtk3::TextView" || $type eq "Gtk3::SourceView::View" ) {
                 
                 # In this case, we don't connect to the widget, but to the widget's buffer ...
                 # ... so we swap the buffer into $widget, so we can disconnect our signal later
@@ -525,16 +550,21 @@ sub new {
                 push @signals, $widget->signal_connect_after(
                     changed =>              sub { $self->changed( $fieldname ) } );
                 push @signals, $widget->signal_connect_after(
-                    'populate-popup' =>     sub { $self->build_right_click_menu(@_) } );
+                    'populate-popup' =>     sub { $self->build_entry_right_click_menu(@_) } );
                 push @signals, $widget->signal_connect(
                     'activate' => sub { $self->{window}->child_focus('tab-forward') } );
+                
+            } elsif ( $type eq "Gtk3::Combo" ) {
+                
+                push @signals, $widget->signal_connect_after(
+                    'button-press' =>       sub { $self->on_combo_button_press_event(@_) } );
                 
             } elsif ( $type eq "Gtk3::SpinButton" ) {
                 
                 push @signals, $widget->signal_connect_after(
                     changed =>              sub { $self->changed( $fieldname ) } );
                 push @signals, $widget->signal_connect_after(
-                    'populate-popup' =>     sub { $self->build_right_click_menu(@_) } );
+                    'populate-popup' =>     sub { $self->build_entry_right_click_menu(@_) } );
                 push @signals, $widget->signal_connect(
                     'key-press-event' =>    sub { $self->process_entry_keypress(@_) } );
                 
@@ -1356,6 +1386,7 @@ sub apply {
             }
         );
         carp( "Error preparing statement to update recordset:\n\n$update_sql\n\n@bind_values\n" . $@ );
+        return FALSE;
     }
     
     # Evaluate the results of the update.
@@ -1378,6 +1409,7 @@ sub apply {
             }
         );
         carp( "Error updating recordset:\n\n$update_sql\n\n@bind_values\n" . $@ . "\n" );
+        return FALSE;
     }
     
     eval {
@@ -1403,7 +1435,9 @@ sub apply {
             # Apply primary key to form ( if field exists )
             my $widget = $self->get_widget( $self->{sql_to_widget_map}->{$primary_key} );
             if ( $widget ) {
-                $widget->set_text( $primary_key ); # Assuming the widget has a set_text method of course ... can't see when this wouldn't be the case
+                $self->{changelock} = TRUE;
+                $widget->set_text( $new_key ); # Assuming the widget has a set_text method of course ... can't see when this wouldn't be the case
+                $self->{changelock} = FALSE;
             }
             
         }
@@ -1431,7 +1465,7 @@ sub apply {
         
         push @{$self->{keyset}}, @keys;
         
-        $self->{changelock} = FALSE;
+        $self->{changelock} = TRUE;
         $self->set_record_spinner_range;
         $self->{changelock} = FALSE;
         
@@ -1656,6 +1690,12 @@ sub delete {
     # Deletes the current record from the Database Server and from memory
     
     my $self = shift;
+    
+    if ( $self->{before_delete} ) {
+        if ( ! $self->{before_delete}() ) {
+            return FALSE;
+        }
+    }
     
     my $sth = $self->{dbh}->prepare( "delete from " . $self->{sql}->{from} . " where "
         . join( "=? and ", @{$self->{primary_keys}} ) . "=?" );
@@ -1989,6 +2029,11 @@ sub setup_combo {
     
     my $counter = 0;
     
+    # First is the 'NULL' row ...
+    $model->insert_with_values( $counter, undef, undef );
+    
+    $counter ++;
+    
     while ( my @row = $sth->fetchrow_array ) {
         
         # We use fetchrow_array instead of fetchrow_hashref so
@@ -2001,9 +2046,9 @@ sub setup_combo {
             push @model_row, $column, $row[$column];
             $column ++;
         }
-    
-    $model->insert_with_values( $counter, @model_row );
-    $counter ++;
+        
+        $model->insert_with_values( $counter, @model_row );
+        $counter ++;
         
     }
     
@@ -2197,9 +2242,9 @@ sub setup_autocompletion {
             push @model_row, $column, $row[$column];
             $column ++;
         }
-    
-    $model->insert_with_values( $counter, @model_row );
-    $counter ++;
+        
+        $model->insert_with_values( $counter, @model_row );
+        $counter ++;
         
     }
     
@@ -2235,6 +2280,13 @@ sub get_widget {
     if ( ! $widget_name ) {
         carp( "Gtk3::Ex::DBI::Form::get_widget() called with no widget name!" );
         return;
+    }
+    
+    # We support managing widgets that aren't constructed by GtkBuilder - these are in the 'widgets' hash.
+    # We do this so we can support custom widgets that GtkBuilder doesn't support ( eg GtkSourceView )
+    
+    if ( exists $self->{widgets}->{ $widget_name } && exists $self->{widgets}->{ $widget_name }->{object} ) {
+        return $self->{widgets}->{ $widget_name }->{object};
     }
     
     my $widget = $self->{builder}->get_object( $widget_name );
@@ -2288,7 +2340,9 @@ sub get_widget_value {
         $value = $date;
         
         
-    } elsif ( $type eq "Gtk3::ToggleButton" ) {
+    } elsif ( $type eq "Gtk3::ToggleButton"
+           || $type eq "Gtk3::RadioButton"
+    ) {
         
         if ( $widget->get_active ) {
             $value = 1;
@@ -2315,7 +2369,7 @@ sub get_widget_value {
             }
         }
         
-    } elsif ( $type eq "Gtk3::TextView" ) {
+    } elsif ( $type eq "Gtk3::TextView" || $type eq "Gtk3::SourceView::View" ) {
         
         my $textbuffer = $widget->get_buffer;
         my ( $start_iter, $end_iter ) = $textbuffer->get_bounds;
@@ -2452,7 +2506,9 @@ sub set_widget_value {
             $widget->select_day( 0 );
         }
         
-    } elsif ( $type eq "Gtk3::ToggleButton" ) {
+    } elsif ( $type eq "Gtk3::ToggleButton"
+           || $type eq "Gtk3::RadioButton"
+    ) {
         
         $widget->set_active( $local_value || 0 );
         
@@ -2485,15 +2541,24 @@ sub set_widget_value {
         my $match_found = FALSE;
         
         while ( $iter ) {
-            if ( ( defined $local_value ) &&
-                ( $local_value eq $model->get( $iter, 0 ) ) ) {
-                    $match_found = TRUE;
-                    $widget->set_active_iter( $iter );
-                    last;
+            
+            my $model_value = $model->get( $iter, 0 );
+            
+            if (
+                (   defined $local_value && $local_value eq $model_value )  # our value matches the current model value
+             || ( ! defined $local_value && ! defined $model_value )        # both our value and the model value are undef ( eg NULL or not selected )
+            ) {
+                
+                $match_found = TRUE;
+                $widget->set_active_iter( $iter );
+                last;
+                
             }
+            
             if ( ! $model->iter_next( $iter ) ) {
                 last;
             }
+            
         } 
         
         # There's only really a need to warn if we've actually been passed a value, because
@@ -2504,7 +2569,7 @@ sub set_widget_value {
             carp( "Form [" . $self->{friendly_table_name} . "] failed to set [$fieldname] to value [$value] ( it wasn't in the model )" );
         }
         
-    } elsif ( $type eq "Gtk3::TextView" ) {
+    } elsif ( $type eq "Gtk3::TextView" || $type eq "Gtk3::SourceView::View" ) {
         
         $widget->get_buffer->set_text( $local_value || "" );
         
@@ -2819,7 +2884,16 @@ sub parse_sql_server_default {
     
 }
 
-sub build_right_click_menu {
+sub on_combo_button_press_event {
+    
+    my ( $self, $widget, $event, $something ) = @_;
+    
+    # This method appends menu items to the right-click menu of combos
+    print "Yo!\n";
+    
+}
+
+sub build_entry_right_click_menu {
         
     # This sub appends menu items to the right-click menu of widgets
     

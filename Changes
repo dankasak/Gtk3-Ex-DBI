@@ -1,5 +1,43 @@
 CHANGELOG
 
+Version 3.2
+
+    Gtk3::Ex::DBI:
+     Fixes for status label constructor ( need to pass empty string )
+     Set status label width
+     Added file_chooser convenience method ( for creating file chooser dialogs )
+
+    Gtk3::Ex::DBI::Datasheet
+     Added force_upper_case_fields constructor flag ( cross-db compatibility hack )
+     Added no_autosizing constructor flag ( disable column auto-sizing )
+     Added data_to_csv to 'supported_recordset_items'
+     Updated some icons to use the new icon naming convention
+     Postgres fixes ( you can pass a schema in )
+     Return undef if setup_fields() fails
+     Work-arounds for gtk3 broken icon rendering
+     Fixes for fetching column info
+     Fixes for renderers that don't have a column set ( image renderers and customer renderers may be like this )
+     Clarification of logic in constructing delete SQL
+    Fixes for fetching auto-incrementing key values and setting back into datasheet
+     Pass errors to die()
+     Only clone $dbh in setup_combo for SQL Server
+     Added Text::CSV support to data_to_csv()
+     Added progress bar support to data_to_csv()
+     
+    Gtk3::Ex::DBI::Form
+     Added force_upper_case_fields constructor flag ( cross-db compatibility hack )
+     Added Gtk3::RadioButton support
+     Added Gtk3::Combo support ( though not tested - could be incomplete )
+     If apply() fails, return( FALSE ) early
+     In apply() if we have an auto_incrementing primary key, set the changelock before+after setting the new key value
+     In apply() fix setting the changelock when setting the record spinner range
+     In setup_combo() append a 'NULL' entry at the top of the list
+     Added ability to set 'NULL' entry in a combo box ( ie from a database NULL value )
+     Added support for Gtk3::SourceView
+     Added support for managing widgets passed via {widgets}->{$widget_name}->{object}
+     Added before_delete callback support
+     Fix setting keys triggers the 'changed' status after applying ( non-autoincrementing keys only )
+     
 Version 3.1
 
     Port to Gtk3

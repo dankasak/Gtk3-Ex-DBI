@@ -36,7 +36,7 @@ use constant {
 };
 
 BEGIN {
-    $Gtk3::Ex::DBI::Datasheet::VERSION                          = '3.1';
+    $Gtk3::Ex::DBI::Datasheet::VERSION                          = '3.2';
 }
 
 sub new {
@@ -49,6 +49,7 @@ sub new {
       , schema               => $$req{schema}                        # Database schema ( not required for MySQL )
       , search_path          => $$req{search_path}                   # Schema search paths ( not required for MySQL )
       , sql                  => $$req{sql}                           # A hash of SQL related stuff
+      , force_upper_case_fields => $$req{force_upper_case_fields}    # Forces fieldnames to be upper-case ( set this to match upper-case glade object names )
       , treeview             => $$req{treeview}                      # A Gtk2::Treeview to connect to
       , footer_treeview      => $$req{footer_treeview}               # A Gtk2::Treeview to connect to ( for the footer )
       , vbox                 => $$req{vbox}                          # A vbox to create treeview(s) in
@@ -82,6 +83,8 @@ sub new {
       , recordset_tools_box  => $$req{recordset_tools_box}           # A box to create recordset tools in ( add / insert / update / delete / undo / spinnner )
       , recordset_tool_items => $$req{recordset_tool_items}          # An array of item names to add to the recordset tools box
       , auto_tools_box       => $$req{auto_tools_box}                # Boolean to turn on creation of the tools box ( requires vbox )
+      , no_autosizing        => $$req{no_autosizing}                 # Disable column auto-sizing
+      , recordset_extra_tools => $$req{recordset_extra_tools}        # Extra buttons to add to the recordset tools box
     };
     
     $self->{months_array} = qw/ Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec /;
@@ -112,22 +115,32 @@ sub new {
     bless $self, $class;
     
     $self->{supported_recordset_items} = {
-        insert  => {
-                        type        => 'button'
-                      , icon_name   => 'gtk-add'
-                   }
-      , undo    => {
-                        type        => 'button'
-                      , icon_name   => 'edit-undo'
-                   }
-      , delete  => {
-                        type        => 'button'
-                      , icon_name   => 'gtk-delete'
-                   }
-      , apply   => {
-                        type        => 'button'
-                      , icon_name   => 'gtk-apply'
-                   }
+#        navigator   => {
+#                            type        => 'navigator'
+#                       }
+#      , label       => {
+#                            type        => 'label'
+#                       }
+        insert      => {
+                            type        => 'button'
+                          , icon_name   => 'document-new'
+                       }
+      , undo        => {
+                            type        => 'button'
+                          , icon_name   => 'edit-undo'
+                       }
+      , delete      => {
+                            type        => 'button'
+                          , icon_name   => 'edit-delete'
+                       }
+      , apply       => {
+                            type        => 'button'
+                          , icon_name   => 'document-save'
+                       }
+      , data_to_csv => {
+                            type        => 'button'
+                          , icon_name   => 'document-save-as'
+                       }
     };
     
     my $legacy_warnings;
@@ -187,12 +200,14 @@ sub new {
     # PostGreSQL stuff - DLB
     if ( $self->{server} =~ /postgres/i ) {
         
-        if ( ! $self->{search_path} ) {
-            $self->{search_path} = $self->{schema} . ",public";
+        if ( $self->{schema} ) {
+            if ( ! $self->{search_path} ) {
+                $self->{search_path} = $self->{schema} . ",public";
+            }
+            
+            my $sth = $self->{dbh}->prepare ( "SET search_path to " . $self->{search_path} );
+            $sth->execute or die $self->{dbh}->errstr;
         }
-        
-        my $sth = $self->{dbh}->prepare ( "SET search_path to " . $self->{search_path} );
-        $sth->execute or die $self->{dbh}->errstr;
         
     } elsif ( lc($self->{server}) eq "sqlserver" ) {
         
@@ -201,7 +216,15 @@ sub new {
         
     }
     
-    $self->setup_fields;
+    if ( ! $self->setup_fields ) {
+        # If there's an error setting up fields, we don't want to continue,
+        # as we'll ( sometimes ) then create a treeview which is awkward to detect
+        # and delete by the caller. The result is that if *another* datasheet object is constructed,
+        # we'll have 2 treeviews. This would happen, for example, when a user has to select a connection
+        # and database to run a given query against, and they get it wrong. Or alternatively when we're executing
+        # some SQL from a user and they get something wrong.
+        return undef;
+    }
     
     $self->setup_treeview( "treeview" );
     
@@ -422,7 +445,13 @@ sub setup_fields {
         return FALSE;
     }
     
-    $self->{fieldlist} = $sth->{'NAME'};
+    my $name_req_string = 'NAME';
+    
+    if ( $self->{force_upper_case_fields} ) {
+        $name_req_string .= '_uc';
+    }
+    
+    $self->{fieldlist} = $sth->{$name_req_string};
     
     $sth->finish;
     
@@ -441,15 +470,17 @@ sub setup_fields {
     }
     
     # If there are no field definitions, then create some from our fieldlist from the database
+    # TODO: fix no_autosizing
+#    if ( ! $self->{fields} && ! exists $self->{no_autosizing} ) {
     if ( ! $self->{fields} ) {
-    	my $no_of_fields = scalar @{$self->{fieldlist}};
+        my $no_of_fields = scalar @{$self->{fieldlist}};
         my $field_percentage = $no_of_fields < 8 ? 100 / $no_of_fields : 12.5; # Don't set percentages < 12.5 - doesn't really work so well ...
         for my $field ( @{$self->{fieldlist}} ) {
             push @{$self->{fields}},
-            	{
-            		name		=> $field,
-            		x_percent	=> $field_percentage
-            	};
+                {
+                    name        => $field
+                  , x_percent   => $field_percentage
+                };
         }
     }
     
@@ -480,40 +511,39 @@ sub setup_fields {
         header_markup   => ""
     };
     
-    # Fetch column_info for current table ( for those that support it )
-    eval {
-        if ( $self->{sql}->{pass_through} ) {
-            $sth = $self->{dbh}->column_info( undef, $self->{schema}, $self->{sql}->{pass_through}, '%' )
-                || die $self->{dbh}->errstr;
-        } else {
+    if ( ! $self->{sql}->{pass_through} ) {
+        
+        # Fetch column_info for current table ( for those that support it )
+        eval {
             $sth = $self->{dbh}->column_info ( undef, $self->{schema}, $self->{sql}->{from}, '%' )
                 || die $self->{dbh}->errstr;
-        }
-    };
-    
-    if ( $@ && ! $self->{quiet} ) {
+        };
         
-        # We don't really want a dialog error message in this case. Dump a warning to the console
-        # that we can't get column info, and continue ( renderers will default to text )
-        carp( "\nCouldn't get column info for " . $self->{friendly_table_name} . " ) ...\n"
-            . " ... This will happen in a multi-table query ...\n"
-            . " ... Defaulting to text renderers for undefined fields\n\n" );
-        
-    } else {
-        
-        while ( my $column_info_row = $sth->fetchrow_hashref ) {
-            # Loop through the list of columns from the database, and
-            # add only columns that we're actually dealing with
-            for my $field ( @{$self->{fieldlist}} ) {
-                # Allow column_info injection - skip if column_info already exists for this field
-                if ( $column_info_row->{COLUMN_NAME} eq $field  && ! exists $self->{column_info}->{$field} ) {
-                    $self->{column_info}->{$field} = $column_info_row;
-                    last;
+        if ( $@ && ! $self->{quiet} ) {
+            
+            # We don't really want a dialog error message in this case. Dump a warning to the console
+            # that we can't get column info, and continue ( renderers will default to text )
+            carp( "\nCouldn't get column info for " . $self->{friendly_table_name} . " ) ...\n"
+                . " ... This will happen in a multi-table query ...\n"
+                . " ... Defaulting to text renderers for undefined fields\n\n" );
+            
+        } else {
+            
+            while ( my $column_info_row = $sth->fetchrow_hashref ) {
+                # Loop through the list of columns from the database, and
+                # add only columns that we're actually dealing with
+                for my $field ( @{$self->{fieldlist}} ) {
+                    # Allow column_info injection - skip if column_info already exists for this field
+                    if ( $column_info_row->{COLUMN_NAME} eq $field  && ! exists $self->{column_info}->{$field} ) {
+                        $self->{column_info}->{$field} = $column_info_row;
+                        last;
+                    }
                 }
             }
+            
+            $sth->finish;
+            
         }
-        
-        $sth->finish;
         
     }
     
@@ -576,6 +606,8 @@ sub setup_fields {
     
     # Remember the primary key column for later
     $self->{primary_key_column} = $self->{column_name_to_number_mapping}->{ $self->{primary_key} };
+    
+    return TRUE;
     
 }
 
@@ -684,9 +716,13 @@ sub setup_treeview {
         $self->{icons}[LOCKED]      = $self->{treeview}->render_icon( "gtk-dialog-authentication",  "menu" );
         
         foreach my $icon ( @{$self->{icons}} ) {
-            my $icon_width = $icon->get_width;
-            if ( $icon_width > $self->{status_icon_width} ) {
-                $self->{status_icon_width} = $icon_width;
+            # Gtk3 is fucked :( Icon handling is broken now, with no default
+            # icons, and sometimes the above ->render_icon() calls can return UNDEF!
+            if ( $icon ) {
+                my $icon_width = $icon->get_width;
+                if ( $icon_width > $self->{status_icon_width} ) {
+                    $self->{status_icon_width} = $icon_width;
+                }
             }
         }
         
@@ -933,7 +969,7 @@ sub setup_treeview {
             
             $renderer->{column} = $field->{column};
             
-            #$renderer->set( text    => "" );
+            $renderer->set( text    => "" );
             
             $field->{ $treeview_type . "_column" } = Gtk3::TreeViewColumn->new_with_attributes(
                 $field->{name},
@@ -948,7 +984,7 @@ sub setup_treeview {
             
         } elsif ( $field->{renderer} eq "date" ) {
             
-            $renderer = Gtk3::Ex::Datasheet::DBI::CellRendererDate->new;
+            $renderer = Gtk3::Ex::DBI::Datasheet::CellRendererDate->new;
             $renderer->{column} = $field->{column};
             $renderer->set( mode => "editable" );
             
@@ -1105,7 +1141,7 @@ sub setup_treeview {
             
             # Replace the default ( whatever it is ) column header with a GtkLabel so
             # we can format the text somewhat
-            my $label = Gtk3::Label->new;
+            my $label = Gtk3::Label->new( '' );
             
             if ( exists $field->{header_markup} ) {
                 $label->set_markup( $field->{header_markup} );
@@ -1113,8 +1149,6 @@ sub setup_treeview {
                 $label->set_text( "$field->{name}" );
             }
             
-            # Gtk3 change:
-            #$label->visible( 1 );
             $label->show;
             
             $field->{ $treeview_type . "_column" }->set_widget( $label );
@@ -1289,7 +1323,9 @@ sub process_render_functions {
     # ie In your custom render functions, you should pull the value from
     # $tree_column->{render_value}, which gets set right here:
     
-    $tree_column->{render_value} = $model->get( $iter, $renderer->{column} );
+    if ( exists $renderer->{column} ) { # for images and other types, we may not have $renderer->{column} set ...
+        $tree_column->{render_value} = $model->get( $iter, $renderer->{column} );
+    }
     
     # First we do custom render functions ...
     foreach my $render_function ( @{$tree_column->{custom_render_functions}} ) {
@@ -1357,7 +1393,7 @@ sub builtin_render_function_number {
         
         # For percentages, multiply by 100
         if ( $number->{percentage} ) {
-        	$value *= 100;
+            $value *= 100;
         }
         
         # Round
@@ -1412,7 +1448,7 @@ sub builtin_render_function_number {
         
         # Append a percentage sign for percentages
         if ( $number->{percentage} ) {
-        	$value .= '%';
+            $value .= '%';
         }
         
         $tree_column->{render_value} = $value;
@@ -2232,23 +2268,21 @@ sub apply {
         
         if ( $status == DELETED ) {
             
-            my @values;
+            my ( @primary_key_filter_components, @values );
             
-            my $sql = "delete from " . $self->{sql}->{from} . " where ";
-            
-            my @keys;
+            my $sql = "delete from " . $self->{sql}->{from} . " where ";# . $self->{primary_key} . "=?";
             
             foreach my $primary_key_item ( keys %{$primary_keys} ) {
-                push @keys,   "$primary_key_item = ?";
+                push @primary_key_filter_components, "$primary_key_item=?";
                 push @values, $primary_keys->{$primary_key_item};
             }
             
-            $sql .= join( ' and ', @keys );
+            $sql .= join( " and ", @primary_key_filter_components );
             
-            my $sth = $self->{dbh}->prepare( $sql );
+            my $sth = $self->{dbh}->prepare( $sql ) || die( $self->{dbh}->errstr );
             
             eval {
-                $sth->execute( @values ) || die;
+                $sth->execute( @values ) || die( $sth->errstr );
             };
             
             if ( $@ ) {
@@ -2341,27 +2375,20 @@ sub apply {
             chop( $sql_fields );
             
             if ( $status == INSERTED ) {
-                
                 chop( $placeholders );
                 $sql = "insert into " . $self->{sql}->{from} . " ( $sql_fields ) values ( $placeholders )";
-                
             } elsif ( $status == CHANGED ) {
-                
                 $sql = "update " . $self->{sql}->{from} . " set $sql_fields where ";
-                
-                my @keys;
-            
+                my @placeholder_array;
                 foreach my $primary_key_item ( keys %{$primary_keys} ) {
-                    push @keys,   "$primary_key_item = ?";
+                    push @placeholder_array, "$primary_key_item = ?";
+#                    $sql .= "$primary_key_item=?,";
                     push @values, $primary_keys->{$primary_key_item};
                 }
-                
-                $sql .= join( ' and ', @keys );
-                
+                $sql .= join( " and ", @placeholder_array );
+#                chop( $sql );
             } else {
-                
-                warn "Unknown status: $status in status column! Skipping ...\n";
-                
+                warn "WTF? Unknown status: $status in status column! Skipping ...\n";
             }
             
             my $sth;
@@ -2384,7 +2411,7 @@ sub apply {
             }
             
             eval {
-                $sth->execute( @values ) || die;
+                $sth->execute( @values ) || die( $sth->errstr );
             };
             
             if ( $@ ) {
@@ -2408,6 +2435,9 @@ sub apply {
                 if ( $self->{auto_incrementing} ) {
                     my $primary_key = $self->last_insert_id;
                     $model->set( $iter, $self->{column_name_to_number_mapping}->{ $self->{primary_keys}[0] }, $primary_key );
+                    foreach my $key ( keys %{$primary_keys} ) { # easiest way to get the *only* key ( hopefully ) in an auto-incrementing setup
+                        $primary_keys->{$key} = $primary_key;
+                    }
                 }
             }
             
@@ -3130,15 +3160,27 @@ sub setup_combo {
     
     my $combo = $self->{fields}[$column_no]->{model_setup};
     
-    # First we clone a database connection - in case we're dealing with SQL Server here ...
-    #  ... SQL Server doesn't like it if you do too many things ( > 1 ) with one connection :)
-    my $local_dbh;
+    # For SQL Server, we clone a connection, as I've had issues with multiple
+    # active statement handles. This will probably also affect Netezza as well,
+    # but for now, I'm just adding cloning for SQL Server
     
-    if ( exists $combo->{alternate_dbh} ) {
-        $local_dbh = $combo->{alternate_dbh}->clone;
+    my ( $local_dbh , $cloned );
+    
+    if ( lc($self->{server}) eq "sqlserver" ) {
+        if ( exists $combo->{alternate_dbh} ) {
+            $local_dbh = $combo->{alternate_dbh}->clone;
+        } else {
+            $local_dbh = $self->{dbh}->clone;
+        }
+        $cloned = 1;
     } else {
-        $local_dbh = $self->{dbh}->clone;
+        if ( exists $combo->{alternate_dbh} ) {
+            $local_dbh = $combo->{alternate_dbh};
+        } else {
+            $local_dbh = $self->{dbh};
+        }
     }
+    
     
     if ( ! $combo->{sql} ) {
         warn "\nMissing an SQL object in the combo definition for $combo_name!\n\n";
@@ -3245,7 +3287,9 @@ sub setup_combo {
     
     $sth->finish;
     
-    $local_dbh->disconnect;
+    if ( $cloned ) {
+        $local_dbh->disconnect;
+    }
     
     # Connect the model to the widget
     $self->replace_combo_model( $column_no, $model );
@@ -3675,10 +3719,13 @@ sub data_to_csv {
     
     if ( ! $options->{destination} ) {
         # TODO: Gtk3 FileChooser
-        $options->{destination} = Gtk2::Ex::Dialogs::ChooseFile->ask_to_save(
-            title           => "Please choose a destination",
-            icon            => "question",
-            text            => "Please choose a destination file"
+        $options->{destination} = $self->file_chooser(
+            {
+                title           => "Please choose a destination"
+              , action          => "save"
+              , type            => "file"
+              , text            => "Please choose a destination file"
+            }
         );
     }
     
@@ -3687,18 +3734,30 @@ sub data_to_csv {
         return FALSE;
     }
     
+    my $progress_bar = $options->{progress_bar};
+    
+    my $csv_file;
+    
+    my $writing_directive = ">";
+    
+    if ( $options->{encoding} ) {
+        $writing_directive .= ":encoding(" . $options->{encoding} . ")";
+    }
+    
     eval {
-        open ( DEST, ">$options->{destination}" )
+        open $csv_file, $writing_directive, $options->{destination}
             or die "Unable to open $options->{destination}: $!";
     };
     
     if ( $@ ) {
         my $escaped = Glib::Markup::escape_text( $@ );
         $self->dialog(
-            title           => "Error opening destination file",
-            type            => "error",
-            text            => "I failed to open the destination file $options->{destination} for writing.\n"
-                                . "Permission problem?\n$escaped"
+            {
+                title           => "Error opening destination file",
+                type            => "error",
+                text            => "I failed to open the destination file $options->{destination} for writing.\n"
+                                    . "Permission problem?\n$escaped"
+            }
         );
         return FALSE;
     }
@@ -3716,41 +3775,102 @@ sub data_to_csv {
     
     my $line;
     
-    # First print a line of column headers
-    foreach my $column_no ( @{$options->{columns}} ) {
-        $line .= $self->{fields}[$column_no]->{name} . $delimiter;
-    }
-    
-    chop $line;
-    
-    print DEST "$line\n";
-    
-    # Now the data
-    my $model = $self->{treeview}->get_model;
-    my $iter = $model->get_iter_first;
-    
-    while ( $iter ) {
-        my $line;
+    if ( ! $options->{use_old_csv_writer} ) {
+        
+        require Text::CSV;
+        
+        my $csv_writer = Text::CSV->new(
+            {
+                quote_char              => '"'
+              , binary                  => 1
+              , eol                     => "\n"
+              , sep_char                => $delimiter
+              , escape_char             => '\\'
+              , quote_space             => 1
+              , blank_is_undef          => 1
+              , quote_null              => 0
+              , always_quote            => 1
+            }
+        );
+        
+        my $field_names_array;
+        
         foreach my $column_no ( @{$options->{columns}} ) {
-            my $value = $model->get( $iter, $column_no );
-            if ( exists $self->{fields}[$column_no]->{number}
-                    && $self->{fields}[$column_no]->{number} ) {
-                $value =~ s/[\$\,]//g;
-            }
-            if ( $options->{wrapper} ) {
-                $line .= $options->{wrapper} . $value . $options->{wrapper} . $delimiter;
-            } else {
-                $line .= $value . $delimiter;
-            }
+            push @{$field_names_array}, $self->{fields}[$column_no]->{name};
         }
+        
+        $csv_writer->print( $csv_file, $field_names_array );
+        
+        my $counter;
+        
+        # Now the data
+        my $model = $self->{treeview}->get_model;
+        my $iter = $model->get_iter_first;
+        
+        while ( $iter ) {
+            
+            my $record;
+            $counter ++;
+            
+            foreach my $column_no ( @{$options->{columns}} ) {
+                push @{$record}, $model->get( $iter, $column_no );
+            }
+            
+            $csv_writer->print( $csv_file, $record );
+            
+            if ( $progress_bar ) {
+                $progress_bar->set_text( $counter );
+                $progress_bar->pulse;
+                Gtk3::main_iteration while ( Gtk3::events_pending );
+            }
+            
+            if ( ! $model->iter_next( $iter ) ) {
+                last;
+            }
+            
+        };
+        
+    } else {
+        
+        # First print a line of column headers
+        foreach my $column_no ( @{$options->{columns}} ) {
+            $line .= $self->{fields}[$column_no]->{name} . $delimiter;
+        }
+        
         chop $line;
-        print DEST "$line\n";
-        if ( ! $model->iter_next( $iter ) ) {
-            last;
+        
+        print $csv_file "$line\n";
+        
+        # Now the data
+        my $model = $self->{treeview}->get_model;
+        my $iter = $model->get_iter_first;
+        
+        while ( $iter ) {
+            my $line;
+            foreach my $column_no ( @{$options->{columns}} ) {
+                my $value = $model->get( $iter, $column_no );
+                if ( exists $self->{fields}[$column_no]->{number}
+                        && $self->{fields}[$column_no]->{number} ) {
+                            $value =~ s/[\$\,]//g;
+                }
+                if ( $options->{wrapper} ) {
+                    $line .= $options->{wrapper} . $value . $options->{wrapper} . $delimiter;
+                } else {
+                    $line .= $value . $delimiter;
+                }
+            }
+            chop $line;
+            print $csv_file "$line\n";
+            if ( ! $model->iter_next( $iter ) ) {
+                last;
+            }
         }
+        
     }
     
-    close DEST;
+    close $csv_file;
+    
+    # TODO: update status indicator with number of records dumped
     
     return TRUE;
     
@@ -4262,423 +4382,425 @@ sub get_layout {
 #
 
 
-#use strict;
-#use Gtk3 -init;
-#
-#package Gtk3::Ex::Datasheet::DBI::CellRendererDate;
-#
-#use Glib::Object::Subclass
-#    "Gtk3::CellRenderer",
-#    signals     => {
-#                        edited => {
-#                                    flags       => [qw(run-last)],
-#                                    param_types => [qw(Glib::String Glib::Scalar)],
-#                                  },
-#                   },
-#    properties  => [
-#                    Glib::ParamSpec->boolean(
-#                        "editable",
-#                        "Editable",
-#                        "Can I change that?",
-#                        0,
-#                        [qw(readable writable)]
-#                    ),
-#                    Glib::ParamSpec->string(
-#                        "date",
-#                        "Date",
-#                        "What's the date again?",
-#                        "",
-#                        [qw(readable writable)]
-#                    ),
-#                    Glib::ParamSpec->string(
-#                        "format",
-#                        "Format",
-#                        "What day-month-year formatting?",
-#                        "yyyy-mm-dd",
-#                        [qw(readable writable)]
-#                    ),
-#                    Glib::ParamSpec->string(
-#                        "font",
-#                        "Font",
-#                        "What size fonts should be used?",
-#                        12,
-#                        [qw(readable writable)]
-#                    ),
-#                    Glib::ParamSpec->string(
-#                        "foreground",
-#                        "Foreground",
-#                        "What colour should foreground text be?",
-#                        "",
-#                        [qw(readable writable)]
-#                    )
-#    ];
-#
-#use constant x_padding => 2;
-#use constant y_padding => 3;
-#
-#use constant arrow_width => 15;
-#use constant arrow_height => 15;
-#
-#sub hide_popup {
-#    
-#    my ( $cell ) = @_;
-#    
-#    Gtk3->grab_remove( $cell->{ _popup } );
-#    $cell->{ _popup }->hide();
-#    
-#}
-#
-#sub get_today {
-#    
-#    my ( $cell ) = @_;
-#  
-#    my ( $day, $month, $year ) = (localtime())[3, 4, 5];
-#    
-#    $year += 1900;
-#    $month += 1;
-#  
-#    return ( $year, $month, $day );
-#    
-#}
-#
-#sub get_date {
-#    
-#    my ( $cell ) = @_;
-#    
-#    my $text = $cell->get("date");
-#    
-#    my ( $year, $month, $day ) = $text
-#        ? split(/[\/-]/, $text)
-#        : $cell->get_today();
-#    
-#    return ( $year, $month, $day );
-#    
-#}
-#
-#sub add_padding {
-#    
-#    my ( $cell, $year, $month, $day ) = @_;
-#    return ( $year, sprintf("%02d", $month), sprintf("%02d", $day) );
-#    
-#}
-#
-#sub INIT_INSTANCE {
-#    
-#    my ( $cell ) = @_;
-#    
-#    my $popup = Gtk3::Window->new ('popup');
-#    my $vbox = Gtk3::VBox->new( 0, 0 );
-#    
-#    my $calendar = Gtk3::Calendar->new();
-#    
-#    #$calendar->modify_font( Gtk3::Pango::FontDescription->from_string( "Arial " . $cell->get( "font" ) ) );
-#    $calendar->modify_font( Pango::FontDescription->from_string( "Arial " . $cell->get( "font" ) ) );
-#    
-#    my $hbox = Gtk3::HBox->new( 0, 0 );
-#    
-#    my $today = Gtk3::Button->new('Today');
-#    my $none = Gtk3::Button->new('None');
-#    
-#    # $cell -> {_arrow} = Gtk3::Arrow->new( "down", "none" );
-#    
-#    # We can't just provide the callbacks now because they might need access to
-#    # cell-specific variables.  And we can't just connect the signals in
-#    # START_EDITING because we'd be connecting many signal handlers to the same
-#    # widgets.
-#    $today->signal_connect( clicked => sub {
-#        $cell->{ _today_clicked_callback }->( @_ )
-#            if ( exists( $cell->{ _today_clicked_callback } ) );
-#    } );
-#    
-#    $none->signal_connect( clicked => sub {
-#        $cell->{ _none_clicked_callback }->( @_ )
-#            if ( exists( $cell->{ _none_clicked_callback } ) );
-#    } );
-#    
-#    $calendar->signal_connect( day_selected_double_click => sub {
-#        $cell->{ _day_selected_double_click_callback }->( @_ )
-#            if ( exists( $cell->{ _day_selected_double_click_callback } ) );
-#    } );
-#    
-#    $calendar->signal_connect( month_changed => sub {
-#        $cell->{ _month_changed }->( @_ )
-#            if ( exists( $cell->{ _month_changed } ) );
-#    } );
-#    
-#    $hbox->pack_start( $today, 1, 1, 0 );
-#    $hbox->pack_start( $none, 1, 1, 0 );
-#    
-#    $vbox->pack_start( $calendar, 1, 1, 0 );
-#    $vbox->pack_start( $hbox, 0, 0, 0 );
-#    
-#    # Find out if the click happended outside of our window.  If so, hide it.
-#    # Largely copied from Planner (the former MrProject).
-#    
-#    # Implement via Gtk3::get_event_widget?
-#    $popup->signal_connect( button_press_event => sub {
-#      my ( $popup, $event ) = @_;
-#    
-#      if ( $event->button() == 1 ) {
-#        my ( $x, $y ) = ( $event->x_root(), $event->y_root() );
-#        my ( $xoffset, $yoffset ) = $popup->window()->get_root_origin();
-#    
-#        my $allocation = $popup->allocation();
-#    
-#        my $x1 = $xoffset + 2 * $allocation->x();
-#        my $y1 = $yoffset + 2 * $allocation->y();
-#        my $x2 = $x1 + $allocation->width();
-#        my $y2 = $y1 + $allocation->height();
-#    
-#        unless ( $x > $x1 && $x < $x2 && $y > $y1 && $y < $y2 ) {
-#          $cell->hide_popup();
-#          return 1;
-#        }
-#      }
-#    
-#      return 0;
-#    } );
-#    
-#    $popup->add( $vbox );
-#    
-#    $cell->{ _popup } = $popup;
-#    $cell->{ _calendar } = $calendar;
-#}
-#
-#sub START_EDITING {
-#    
-#    my ( $cell, $event, $view, $path, $background_area, $cell_area, $flags ) = @_;
-#    
-#    my $popup = $cell -> { _popup };
-#    my $calendar = $cell->{ _calendar };
-#    
-#    # Specify the callbacks.  Will be called by the signal handlers set up in
-#    # INIT_INSTANCE.
-#    $cell->{ _today_clicked_callback } = sub {
-#        
-#        my ($button) = @_;
-#        my ($year, $month, $day) = $cell -> get_today();
-#        
-#        $cell->signal_emit( edited=>$path, join( "-", $cell->add_padding( $year, $month, $day ) ) );
-#        $cell->hide_popup();
-#        
-#    };
-#    
-#    $cell->{ _none_clicked_callback } = sub {
-#        
-#        my ( $button ) = @_;
-#      
-#        $cell->signal_emit( edited=>$path, "" );
-#        $cell->hide_popup();
-#        
-#    };
-#    
-#    $cell->{ _day_selected_double_click_callback } = sub {
-#        
-#        my ( $calendar ) = @_;
-#        my ( $year, $month, $day ) = $calendar->get_date();
-#        
-#        $cell->signal_emit( edited => $path, join( "-", $cell -> add_padding( $year, ++$month, $day ) ) );
-#        $cell->hide_popup();
-#        
-#    };
-#    
-#    $cell->{ _month_changed } = sub {
-#        
-#        my ( $calendar ) = @_;
-#        
-#        my ( $selected_year, $selected_month ) = $calendar->get_date();
-#        my ( $current_year, $current_month, $current_day ) = $cell->get_today();
-#        
-#        if ( $selected_year == $current_year && ++$selected_month == $current_month ) {
-#            $calendar->mark_day( $current_day );
-#        }
-#        else {
-#            $calendar->unmark_day( $current_day );
-#        }
-#        
-#    };
-#    
-#    my ( $year, $month, $day ) = $cell->get_date();
-#    
-#    $calendar->select_month( $month - 1, $year );
-#    $calendar->select_day( $day );
-#    
-#    # Necessary to get the correct allocation of the popup.
-#    $popup->move( -500, -500 );
-#    $popup->show_all();
-#    
-#    # Figure out where to put the popup - ie don't put it offscreen,
-#    # as it's not movable ( by the user )
-#    my $screen_height = $popup->get_screen->get_height;
-#    my $requisition = $popup->size_request();
-#    my $popup_width = $requisition->width;
-#    my $popup_height = $requisition->height;
-#    my ( $x_origin, $y_origin ) = $view->get_bin_window()->get_origin();
-#    my ( $popup_x, $popup_y );
-#    
-#    $popup_x = $x_origin + $cell_area->{x} + $cell_area->{width} - $popup_width;
-#    $popup_x = 0 if $popup_x < 0;
-#    
-#    $popup_y = $y_origin + $cell_area->{y} + $cell_area->{height};
-#    
-#    if ( $popup_y + $popup_height > $screen_height ) {
-#      $popup_y = $y_origin + $cell_area->{y} - $popup_height;
-#    }
-#    
-#    $popup->move( $popup_x, $popup_y );
-#    
-#    # Grab the focus and the pointer.
-#    Gtk3->grab_add( $popup );
-#    $popup->grab_focus();
-#    
-#    Gtk3::Gdk->pointer_grab(
-#        $popup->window(),
+use strict;
+use Gtk3 -init;
+
+package Gtk3::Ex::DBI::Datasheet::CellRendererDate;
+
+use Glib::Object::Subclass
+    "Gtk3::CellRenderer",
+    signals     => {
+                        edited => {
+                                    flags       => [qw(run-last)],
+                                    param_types => [qw(Glib::String Glib::Scalar)],
+                                  },
+                   },
+    properties  => [
+                    Glib::ParamSpec->boolean(
+                        "editable",
+                        "Editable",
+                        "Can I change that?",
+                        0,
+                        [qw(readable writable)]
+                    ),
+                    Glib::ParamSpec->string(
+                        "date",
+                        "Date",
+                        "What's the date again?",
+                        "",
+                        [qw(readable writable)]
+                    ),
+                    Glib::ParamSpec->string(
+                        "format",
+                        "Format",
+                        "What day-month-year formatting?",
+                        "yyyy-mm-dd",
+                        [qw(readable writable)]
+                    ),
+                    Glib::ParamSpec->string(
+                        "font",
+                        "Font",
+                        "What size fonts should be used?",
+                        12,
+                        [qw(readable writable)]
+                    ),
+                    Glib::ParamSpec->string(
+                        "foreground",
+                        "Foreground",
+                        "What colour should foreground text be?",
+                        "",
+                        [qw(readable writable)]
+                    )
+    ];
+
+use constant x_padding => 2;
+use constant y_padding => 3;
+
+use constant arrow_width => 15;
+use constant arrow_height => 15;
+
+sub hide_popup {
+    
+    my ( $cell ) = @_;
+    
+    Gtk3->grab_remove( $cell->{ _popup } );
+    $cell->{ _popup }->hide();
+    
+}
+
+sub get_today {
+    
+    my ( $cell ) = @_;
+  
+    my ( $day, $month, $year ) = (localtime())[3, 4, 5];
+    
+    $year += 1900;
+    $month += 1;
+  
+    return ( $year, $month, $day );
+    
+}
+
+sub get_date {
+    
+    my ( $cell ) = @_;
+    
+    my $text = $cell->get("date");
+    
+    my ( $year, $month, $day ) = $text
+        ? split(/[\/-]/, $text)
+        : $cell->get_today();
+    
+    return ( $year, $month, $day );
+    
+}
+
+sub add_padding {
+    
+    my ( $cell, $year, $month, $day ) = @_;
+    return ( $year, sprintf("%02d", $month), sprintf("%02d", $day) );
+    
+}
+
+sub INIT_INSTANCE {
+    
+    my ( $cell ) = @_;
+    
+    my $popup = Gtk3::Window->new ('popup');
+    my $vbox = Gtk3::VBox->new( 0, 0 );
+    
+    my $calendar = Gtk3::Calendar->new();
+    
+    #$calendar->modify_font( Gtk3::Pango::FontDescription->from_string( "Arial " . $cell->get( "font" ) ) );
+    $calendar->modify_font( Pango::FontDescription::from_string( "Arial " . $cell->get( "font" ) ) );
+    
+    my $hbox = Gtk3::HBox->new( 0, 0 );
+    
+    my $today = Gtk3::Button->new('Today');
+    my $none = Gtk3::Button->new('None');
+    
+    # $cell -> {_arrow} = Gtk3::Arrow->new( "down", "none" );
+    
+    # We can't just provide the callbacks now because they might need access to
+    # cell-specific variables.  And we can't just connect the signals in
+    # START_EDITING because we'd be connecting many signal handlers to the same
+    # widgets.
+    $today->signal_connect( clicked => sub {
+        $cell->{ _today_clicked_callback }->( @_ )
+            if ( exists( $cell->{ _today_clicked_callback } ) );
+    } );
+    
+    $none->signal_connect( clicked => sub {
+        $cell->{ _none_clicked_callback }->( @_ )
+            if ( exists( $cell->{ _none_clicked_callback } ) );
+    } );
+    
+    $calendar->signal_connect( day_selected_double_click => sub {
+        $cell->{ _day_selected_double_click_callback }->( @_ )
+            if ( exists( $cell->{ _day_selected_double_click_callback } ) );
+    } );
+    
+    $calendar->signal_connect( month_changed => sub {
+        $cell->{ _month_changed }->( @_ )
+            if ( exists( $cell->{ _month_changed } ) );
+    } );
+    
+    $hbox->pack_start( $today, 1, 1, 0 );
+    $hbox->pack_start( $none, 1, 1, 0 );
+    
+    $vbox->pack_start( $calendar, 1, 1, 0 );
+    $vbox->pack_start( $hbox, 0, 0, 0 );
+    
+    # Find out if the click happended outside of our window.  If so, hide it.
+    # Largely copied from Planner (the former MrProject).
+    
+    # Implement via Gtk3::get_event_widget?
+    $popup->signal_connect( button_press_event => sub {
+      my ( $popup, $event ) = @_;
+    
+      if ( $event->button() == 1 ) {
+        my ( $x, $y ) = ( $event->x_root(), $event->y_root() );
+        my ( $xoffset, $yoffset ) = $popup->window()->get_root_origin();
+    
+        my $allocation = $popup->allocation();
+    
+        my $x1 = $xoffset + 2 * $allocation->x();
+        my $y1 = $yoffset + 2 * $allocation->y();
+        my $x2 = $x1 + $allocation->width();
+        my $y2 = $y1 + $allocation->height();
+    
+        unless ( $x > $x1 && $x < $x2 && $y > $y1 && $y < $y2 ) {
+          $cell->hide_popup();
+          return 1;
+        }
+      }
+    
+      return 0;
+    } );
+    
+    $popup->add( $vbox );
+    
+    $cell->{ _popup } = $popup;
+    $cell->{ _calendar } = $calendar;
+}
+
+sub START_EDITING {
+    
+    my ( $cell, $event, $view, $path, $background_area, $cell_area, $flags ) = @_;
+    
+    my $popup = $cell -> { _popup };
+    my $calendar = $cell->{ _calendar };
+    
+    # Specify the callbacks.  Will be called by the signal handlers set up in
+    # INIT_INSTANCE.
+    $cell->{ _today_clicked_callback } = sub {
+        
+        my ($button) = @_;
+        my ($year, $month, $day) = $cell -> get_today();
+        
+        $cell->signal_emit( edited=>$path, join( "-", $cell->add_padding( $year, $month, $day ) ) );
+        $cell->hide_popup();
+        
+    };
+    
+    $cell->{ _none_clicked_callback } = sub {
+        
+        my ( $button ) = @_;
+      
+        $cell->signal_emit( edited=>$path, "" );
+        $cell->hide_popup();
+        
+    };
+    
+    $cell->{ _day_selected_double_click_callback } = sub {
+        
+        my ( $calendar ) = @_;
+        my ( $year, $month, $day ) = $calendar->get_date();
+        
+        $cell->signal_emit( edited => $path, join( "-", $cell -> add_padding( $year, ++$month, $day ) ) );
+        $cell->hide_popup();
+        
+    };
+    
+    $cell->{ _month_changed } = sub {
+        
+        my ( $calendar ) = @_;
+        
+        my ( $selected_year, $selected_month ) = $calendar->get_date();
+        my ( $current_year, $current_month, $current_day ) = $cell->get_today();
+        
+        if ( $selected_year == $current_year && ++$selected_month == $current_month ) {
+            $calendar->mark_day( $current_day );
+        }
+        else {
+            $calendar->unmark_day( $current_day );
+        }
+        
+    };
+    
+    my ( $year, $month, $day ) = $cell->get_date();
+    
+    $calendar->select_month( $month - 1, $year );
+    $calendar->select_day( $day );
+    
+    # Necessary to get the correct allocation of the popup.
+    $popup->move( -500, -500 );
+    $popup->show_all();
+    
+    # Figure out where to put the popup - ie don't put it offscreen,
+    # as it's not movable ( by the user )
+    my $screen_height = $popup->get_screen->get_height;
+    my $requisition = $popup->size_request();
+    my $popup_width = $requisition->width;
+    my $popup_height = $requisition->height;
+    my ( $x_origin, $y_origin ) = $view->get_bin_window()->get_origin();
+    my ( $popup_x, $popup_y );
+    
+    $popup_x = $x_origin + $cell_area->{x} + $cell_area->{width} - $popup_width;
+    $popup_x = 0 if $popup_x < 0;
+    
+    $popup_y = $y_origin + $cell_area->{y} + $cell_area->{height};
+    
+    if ( $popup_y + $popup_height > $screen_height ) {
+      $popup_y = $y_origin + $cell_area->{y} - $popup_height;
+    }
+    
+    $popup->move( $popup_x, $popup_y );
+    
+    # Grab the focus and the pointer.
+    #Gtk3->grab_add( $popup );
+    $popup->grab_add;
+    
+    $popup->grab_focus();
+    
+#    Gtk3::Gdk::pointer_grab(
+#        $popup,
 #        1,
 #        [ qw( button-press-mask button-release-mask pointer-motion-mask ) ],
 #        undef,
 #        undef,
 #        0
 #    );
+    
+    return;
+    
+}
+
+sub get_date_string {
+    
+    my ( $cell ) = @_;
+    
+    return $cell->get('date');
+    
+}
+
+sub calc_size {
+    
+    my ( $cell, $layout ) = @_;
+    
+    my ( $width, $height ) = $layout -> get_pixel_size();
+    
+    return (
+                0,
+                0,
+                $width + x_padding * 2 + arrow_width,
+                $height + y_padding * 2
+           );
+    
+}
+
+sub GET_SIZE {
+    
+    my ( $cell, $widget, $cell_area ) = @_;
+    
+    my $layout = $cell->get_layout( $widget );
+    $layout->set_text( $cell->get_date_string() || '' );
+    
+    return $cell->calc_size( $layout );
+    
+}
+
+sub get_layout {
+    
+    my ( $cell, $widget ) = @_;
+    
+    return $widget->create_pango_layout("");
+    
+}
+
+sub RENDERS {
+    
+    my ( $cell, $cairo, $widget, $background_area, $cell_area, $flags ) = @_;
+    
+    my $state;
+    
+    if ( $flags & 'selected' ) {
+        $state = $widget->has_focus()
+            ? 'selected'
+            : 'active';
+    } else {
+        $state = $widget->state() eq 'insensitive'
+            ? 'insensitive'
+            : 'normal';
+    }
+    
+    my $layout = $cell->get_layout( $widget );
+    
+    my $datestring = $cell->get_date_string() || '';
+    
+    if ( $datestring eq '0000-00-00' ) {
+        $datestring = '';
+    }
+    
+    if ( $cell->get('format') eq "dd-mm-yyyy" && $datestring ne '' ) {
+        my ( $yyyy, $mm, $dd ) = split /-/, $datestring;
+        $datestring = $dd . "-" . $mm . "-" . $yyyy;
+    } elsif ( $cell->get('format') eq "dd-mm-yy" && $datestring ne '' ) {
+        my ( $yyyy, $mm, $dd ) = split /-/, $datestring;
+        $datestring = $dd . "-" . $mm . "-" . substr( $yyyy, 2, 2 );
+    } elsif ( $cell->get('format') eq 'mmm-yyyy' && $datestring ne '' ) {
+        my ( $yyyy, $mm, $dd ) = split /-/, $datestring;
+        my @months_array = qw ( Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec ); # TODO how do we use the 'global' months array?
+        $datestring = $months_array[ $mm - 1 ] . '-' . $yyyy;
+    }
+    
+    #$layout->set_font_description( Gtk3::Pango::FontDescription->from_string( "Arial " . $cell->get( "font" ) ) );
+    $layout->set_font_description( Pango::FontDescription->from_string( "Arial " . $cell->get( "font" ) ) );
+    
+    # TODO Alignment in CellRendererDate doesn't work. Why?
+    
+#    my $xalign = $cell->get( 'xalign' );
 #    
-#    return;
-#    
-#}
-#
-#sub get_date_string {
-#    
-#    my ( $cell ) = @_;
-#    
-#    return $cell->get('date');
-#    
-#}
-#
-#sub calc_size {
-#    
-#    my ( $cell, $layout ) = @_;
-#    
-#    my ( $width, $height ) = $layout -> get_pixel_size();
-#    
-#    return (
-#                0,
-#                0,
-#                $width + x_padding * 2 + arrow_width,
-#                $height + y_padding * 2
-#           );
-#    
-#}
-#
-#sub GET_SIZE {
-#    
-#    my ( $cell, $widget, $cell_area ) = @_;
-#    
-#    my $layout = $cell->get_layout( $widget );
-#    $layout->set_text( $cell->get_date_string() || '' );
-#    
-#    return $cell->calc_size( $layout );
-#    
-#}
-#
-#sub get_layout {
-#    
-#    my ( $cell, $widget ) = @_;
-#    
-#    return $widget->create_pango_layout("");
-#    
-#}
-#
-#sub RENDER {
-#    
-#    my ( $cell, $window, $widget, $background_area, $cell_area, $expose_area, $flags ) = @_;
-#    
-#    my $state;
-#    
-#    if ( $flags & 'selected' ) {
-#        $state = $widget->has_focus()
-#            ? 'selected'
-#            : 'active';
-#    } else {
-#        $state = $widget->state() eq 'insensitive'
-#            ? 'insensitive'
-#            : 'normal';
+#    if ( ! $xalign || $xalign < 0.5 ) {
+#        $layout->set_alignment( 'PANGO_ALIGN_LEFT' );
+#    } elsif ( $xalign > 0.5 ) {
+#        $layout->set_alignment( 'PANGO_ALIGN_RIGHT' );
+#    } elsif ( $layout == 0.5 ) {
+#        $layout->set_alignment( 'PANGO_ALIGN_CENTER' );
 #    }
-#    
-#    my $layout = $cell->get_layout( $widget );
-#    
-#    my $datestring = $cell->get_date_string() || '';
-#    
-#    if ( $datestring eq '0000-00-00' ) {
-#        $datestring = '';
-#    }
-#    
-#    if ( $cell->get('format') eq "dd-mm-yyyy" && $datestring ne '' ) {
-#        my ( $yyyy, $mm, $dd ) = split /-/, $datestring;
-#        $datestring = $dd . "-" . $mm . "-" . $yyyy;
-#    } elsif ( $cell->get('format') eq "dd-mm-yy" && $datestring ne '' ) {
-#        my ( $yyyy, $mm, $dd ) = split /-/, $datestring;
-#        $datestring = $dd . "-" . $mm . "-" . substr( $yyyy, 2, 2 );
-#    } elsif ( $cell->get('format') eq 'mmm-yyyy' && $datestring ne '' ) {
-#        my ( $yyyy, $mm, $dd ) = split /-/, $datestring;
-#        my @months_array = qw ( Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec ); # TODO how do we use the 'global' months array?
-#        $datestring = $months_array[ $mm - 1 ] . '-' . $yyyy;
-#    }
-#    
-#    #$layout->set_font_description( Gtk3::Pango::FontDescription->from_string( "Arial " . $cell->get( "font" ) ) );
-#    $layout->set_font_description( Pango::FontDescription->from_string( "Arial " . $cell->get( "font" ) ) );
-#    
-#    # TODO Alignment in CellRendererDate doesn't work. Why?
-#    
-##    my $xalign = $cell->get( 'xalign' );
-##    
-##    if ( ! $xalign || $xalign < 0.5 ) {
-##        $layout->set_alignment( 'PANGO_ALIGN_LEFT' );
-##    } elsif ( $xalign > 0.5 ) {
-##        $layout->set_alignment( 'PANGO_ALIGN_RIGHT' );
-##    } elsif ( $layout == 0.5 ) {
-##        $layout->set_alignment( 'PANGO_ALIGN_CENTER' );
-##    }
-#    
-#    my $foreground = $cell->get( 'foreground' );
-#    
-#    if ( $foreground ) {
-#        $layout->set_markup( "<span color='$foreground'>$datestring</span>" );
-#    } else {
-#        $layout->set_text( $datestring );
-#    }
-#    
-#    my ( $x_offset, $y_offset, $width, $height ) = $cell->calc_size( $layout );
-#    
-#    $widget->get_style->paint_layout(
+    
+    my $foreground = $cell->get( 'foreground' );
+    
+    if ( $foreground ) {
+        $layout->set_markup( "<span color='$foreground'>$datestring</span>" );
+    } else {
+        $layout->set_text( $datestring );
+    }
+    
+    my ( $x_offset, $y_offset, $width, $height ) = $cell->calc_size( $layout );
+    
+    $widget->get_style->paint_layout(
+        $cairo,
+        $state,
+        1,
+        $cell_area, # TODO: this won't work any more (?) ... $cell_area is a hash ... used to be an object
+        $widget,
+        "cellrenderertext",
+        $cell_area->{x} + $x_offset + x_padding,
+        $cell_area->{y} + $y_offset + y_padding,
+        $layout
+    );
+    
+    # TODO This slows things down a LOT in large datasheets - particularly with lots of date renderers ...
+    
+#    $widget->get_style->paint_arrow (
 #        $window,
-#        $state,
+#        $widget->state,
+#        'none',
+#        $cell_area,
+#        $cell->{ _arrow },
+#        "",
+#        "down",
 #        1,
-#        $cell_area, # TODO: this won't work any more (?) ... $cell_area is a hash ... used to be an object
-#        $widget,
-#        "cellrenderertext",
-#        $cell_area->{x} + $x_offset + x_padding,
-#        $cell_area->{y} + $y_offset + y_padding,
-#        $layout
+#        $cell_area->x + $cell_area->width - arrow_width,
+#        $cell_area->y + $cell_area->height - arrow_height + 3, #
+#        arrow_width - 3,
+#        arrow_height
 #    );
-#    
-#    # TODO This slows things down a LOT in large datasheets - particularly with lots of date renderers ...
-#    
-##    $widget->get_style->paint_arrow (
-##        $window,
-##        $widget->state,
-##        'none',
-##        $cell_area,
-##        $cell->{ _arrow },
-##        "",
-##        "down",
-##        1,
-##        $cell_area->x + $cell_area->width - arrow_width,
-##        $cell_area->y + $cell_area->height - arrow_height + 3, #
-##        arrow_width - 3,
-##        arrow_height
-##    );
-#
-#}
-#
-#1;
+
+}
+
+1;
 #
 ########################################################################################
 ## CellRendererTime
