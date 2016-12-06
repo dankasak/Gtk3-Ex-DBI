@@ -63,6 +63,7 @@ sub new {
       , fixed_row_height     => $$req{fixed_row_height} || 0         # Boolean to activate fixed-height mode 
       , read_only            => $$req{read_only}                     # Boolean to indicate read-only mode
       , before_insert        => $$req{before_insert}                 # Code that runs *before* each record is inserted
+      , before_query         => $$req{before_query}                  # Code that runs *before* query() is run
       , on_insert            => $$req{on_insert}                     # Code that runs *after* each record is inserted
       , before_apply         => $$req{before_apply}                  # Code that runs *before* each record is applied
       , on_apply             => $$req{on_apply}                      # Code that runs *after* each record is applied
@@ -1882,6 +1883,10 @@ sub query {
         
     }
     
+    if ( $self->{before_query} ) {
+        $self->{before_query}();
+    }
+    
     my $sql;
     
     if ( exists $self->{sql}->{pass_through} ) {
@@ -1929,6 +1934,10 @@ sub query {
         
         if ( $self->{sql}->{where} ) {
             $sql .= " where " . $self->{sql}->{where};
+        }
+        
+        if ( $self->{sql}->{limit} ) {
+            $sql .= " limit " . $self->{sql}->{limit};
         }
         
         if ( $self->{sql}->{order_by} ) {
@@ -6441,7 +6450,7 @@ For slow network connections, your Gtk3 GUI may appear to hang while populating 
 To make things feel more fluid, you can set $Gtk3::Ex::Datasheet::DBI::gtk2_main_in_query = TRUE in your
 application, which will trigger:
 
-Gtk3->main_iteration while ( Gtk3->events_pending );
+Gtk3::main_iteration while ( Gtk3::events_pending );
 
 for each record appended to the treeview. While this slows down operation of your application, it *appears* to
 have the opposite effect, as the GUI remains responsive. This is even the case when using high speed networks.
@@ -6498,7 +6507,7 @@ usual for database applications, so you shouldn't have any problems. See the exa
 
 =head1 AUTHORS
 
-Daniel Kasak - dan@entropy.homelinux.org
+Daniel Kasak - d.j.kasak.dk@gmail.com
 
 =head1 CREDITS
 
