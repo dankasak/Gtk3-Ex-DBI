@@ -2571,7 +2571,7 @@ sub set_widget_value {
         
     } elsif ( $type eq "Gtk3::TextView" || $type eq "Gtk3::SourceView::View" ) {
         
-        $widget->get_buffer->set_text( $local_value || "" );
+        $widget->get_buffer->set_text( ( defined $local_value ? $local_value : "" ) );
         
     } elsif ( $type eq "Gtk3::CheckButton" ) {
         
