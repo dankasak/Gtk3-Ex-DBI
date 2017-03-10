@@ -1746,20 +1746,21 @@ sub process_text_editing {
         
         if ( $self->{fields}->[$column_no]->{validation} && ! $self->{suppress_validation} ) { # Array of field defs starts at zero
             $self->{suppress_validation} = TRUE;
-            if ( ! $self->{fields}->[$column_no]->{validation}(
+            my $validation_response = $self->{fields}->[$column_no]->{validation}( # TODO Document!
                 {
-                    renderer    => $renderer,
-                    text_path   => $text_path,
-                    new_text    => $new_text,
-                    model       => $model # TODO Document!
+                    renderer    => $renderer
+                  , text_path   => $text_path
+                  , old_text    => $old_text
+                  , new_text    => $new_text
+                  , model       => $model
                 }
-            ) ) {
-                    return FALSE; # Error dialog should have already been produced by validation code
+            );
+            if ( ! $validation_response ) {
+                return FALSE; # Error dialog should have already been produced by validation code
             }
         }
         
         # Supress setting the record status if the changed column is an sql_ignore / dont_update column
-        # TOD: Consolidate into 1 attribute ... probably used for exactly the same thing
         if (
                 ( exists $self->{columns}[$column_no]->{sql_ignore} && $self->{columns}[$column_no]->{sql_ignore} )
              || ( exists $self->{columns}[$column_no]->{dont_update} && $self->{columns}[$column_no]->{dont_update} )

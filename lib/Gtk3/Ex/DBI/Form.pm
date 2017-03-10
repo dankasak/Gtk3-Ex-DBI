@@ -47,7 +47,7 @@ sub new {
           , before_apply                => $$req{before_apply}                         # A reference to code that is run *before* the 'apply' method is called
           , on_apply                    => $$req{on_apply}                             # A reference to code that is run *after* the 'apply' method is called
           , on_delete                   => $$req{on_delete}                            # A reference to code that is run *after* the 'delete' method is called
-          , on_undo                     => $$req{on_undo}                              # A reference to code that is run *after* teh 'undo' method is called
+          , on_undo                     => $$req{on_undo}                              # A reference to code that is run *after* the 'undo' method is called
           , on_changed                  => $$req{on_changed}                           # A reference to code that is run *every* time a managed field is changed
           , on_initial_changed          => $$req{on_initial_changed}                   # A reference to code that is run when the recordset status *initially* changes to CHANGED 
           , auto_apply                  => $$req{auto_apply}                           # Boolean to force all records to be applied automatically when querying, closing, etc
@@ -2030,7 +2030,7 @@ sub setup_combo {
     my $counter = 0;
     
     # First is the 'NULL' row ...
-    $model->insert_with_values( $counter, undef, undef );
+    $model->insert_with_values( $counter, 0, undef, 1, undef );
     
     $counter ++;
     
