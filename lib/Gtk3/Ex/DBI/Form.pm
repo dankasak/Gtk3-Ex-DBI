@@ -10,7 +10,7 @@ use warnings;
 #no warnings;
 
 use Carp;
-use Data::Dumper;
+#use Data::Dumper;
 
 use POSIX;
 use XML::Simple;
@@ -1307,10 +1307,10 @@ sub apply {
         
         my $widget_definition = $self->{widgets}->{$fieldname};
         
-        if ( $self->{debug} ) {
-            print "Processing field $fieldname ...\n"
-                . Dumper( $widget_definition ) . "\n";
-        }
+#        if ( $self->{debug} ) {
+#            print "Processing field $fieldname ...\n"
+#                . Dumper( $widget_definition ) . "\n";
+#        }
         
         # Support for aliases
         my $sql_fieldname = $widget_definition->{sql_fieldname} || $fieldname;
@@ -3133,7 +3133,7 @@ sub find_do_search {
         
     }
     
-    print "Find Dialog querying with:\n$where_clause\n" . Dumper( $bind_values );
+#    print "Find Dialog querying with:\n$where_clause\n" . Dumper( $bind_values );
     
     $self->query(
         {
