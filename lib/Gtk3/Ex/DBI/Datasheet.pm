@@ -3827,9 +3827,7 @@ sub data_to_csv {
               , sep_char                => $delimiter
               , escape_char             => '\\'
               , quote_space             => 1
-              , blank_is_undef          => 1
-              , quote_null              => 0
-              , always_quote            => 1
+              , undef_str               => "\\N"
             }
         );
         

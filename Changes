@@ -1,5 +1,8 @@
 CHANGELOG
 
+    Gtk3::Ex::DBI::Datasheet:
+     Use Text::CSV's new undef_str for encoding NULL values
+
 Version 3.3 ( add237f34c6d826c5fe93aae7ac3a4d606d675fc - 2017-08-28 )
 
     Gtk3::Ex::DBI::Datasheet:
