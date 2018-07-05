@@ -3782,6 +3782,8 @@ sub data_to_csv {
     
     if ( $options->{encoding} ) {
         $writing_directive .= ":encoding(" . $options->{encoding} . ")";
+    } else {
+        $writing_directive .= ":encoding(utf8)";
     }
     
     eval {
