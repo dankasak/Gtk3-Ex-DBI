@@ -35,7 +35,7 @@ use constant {
 };
 
 BEGIN {
-    $Gtk3::Ex::DBI::Datasheet::VERSION                          = '3.3';
+    $Gtk3::Ex::DBI::Datasheet::VERSION                          = '3.32';
 }
 
 sub new {
@@ -2527,14 +2527,19 @@ sub apply {
         }
         
         if ( $status == DELETED ) {
-            # Delete row from treeview - Gtk3 doesn't like us storing these iters for
-            # later removal, so we have to do it now, or convert it to a treepath or some BS
-            # Note that this MUST happen after the on_apply() code, above
-            $model->remove( $iter );
-        }
-        
-        if ( ! $model->iter_next( $iter ) ) {
+            
+            # Note that the below line, $iter is already bumped, as if we're gone $model->iter_next( $iter )
+            #  ... and similar to $model->iter_next( $iter ) ... it returns FALSE if there are no more rows
+            
+            if ( ! $model->remove( $iter ) ) {
+                last;
+            }
+            
+        } elsif ( ! $model->iter_next( $iter ) ) {
+            
+            # iter_next() returns FALSE if there are no more rows
             last;
+            
         }
         
     }
@@ -3011,6 +3016,18 @@ sub set_column_value {
     my $model = $self->{treeview}->get_model;
     my $iter = $model->get_iter( $$selected_paths[0] );
     
+    my $column_no = $self->column_from_name( $sql_fieldname );
+    
+    if ( ! $column_no ) {
+        $self->dialog(
+            {
+                title   => "Failed to set field!",
+                type    => "error",
+                text    => "set_column_value() was called, and passed an unknown sql fieldname: [$sql_fieldname]."
+            }
+        );
+        return FALSE;
+    }
     $model->set(
         $iter,
         $self->column_from_name( $sql_fieldname ),
