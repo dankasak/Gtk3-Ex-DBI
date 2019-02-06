@@ -35,7 +35,7 @@ use constant {
 };
 
 BEGIN {
-    $Gtk3::Ex::DBI::Datasheet::VERSION                          = '3.32';
+    $Gtk3::Ex::DBI::Datasheet::VERSION                          = '3.33';
 }
 
 sub new {
@@ -2123,7 +2123,7 @@ sub query {
             if ( exists $field->{treeview_column} ) {
                 my $renderer = ($field->{treeview_column}->get_cells)[0];
                 foreach my $dependant_column ( @{$renderer->{dependant_columns}} ) {
-                    $self->refresh_dynamic_combos( $renderer, $treepath );
+                    $self->refresh_dynamic_combos( $renderer, $treepath ); # TODO: not using $dependant column ???
                 }
             }
         }
@@ -2951,8 +2951,9 @@ sub get_column_value {
     
     # This function returns the value in the requested column in the currently selected row
     # If multi_select is turned on and more than 1 row is selected, it looks in the 1st row
+    # If you have renamed columns from their sql_name, then pass a column_no instead of a sql_fieldname
     
-    my ( $self, $sql_fieldname ) = @_;
+    my ( $self , $sql_fieldname , $column_no ) = @_;
     
     my ( $selected_paths, $model ) = $self->{treeview}->get_selection->get_selected_rows;
     
@@ -2965,7 +2966,10 @@ sub get_column_value {
     
     foreach my $selected_path ( @{$selected_paths} ) {
         
-        my $column_no = $self->column_from_name( $sql_fieldname );
+        if ( ! defined $column_no ) {
+            $column_no = $self->column_from_name( $sql_fieldname );
+        }
+        
         my $value = $model->get( $model->get_iter( $selected_path ), $column_no );
         
         # Strip out dollars and commas for numeric columns
