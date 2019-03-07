@@ -18,7 +18,7 @@ use Time::HiRes;
 use Glib qw/TRUE FALSE/;
 
 BEGIN {
-    $Gtk3::Ex::DBI::Form::VERSION = '3.3';
+    $Gtk3::Ex::DBI::Form::VERSION = '3.4';
 }
 
 sub new {
@@ -335,9 +335,20 @@ sub new {
         
     }
     
-    # Construct a hash to map SQL fieldnames to widgets
+    # Some other house-keeping
     foreach my $widget ( keys %{$self->{widgets}} ) {
+        
+        # Construct a hash to map SQL fieldnames to widgets
         $self->{sql_to_widget_map}->{$self->{widgets}->{$widget}->{sql_fieldname} || $widget} = $widget;
+        
+        # Check if there is a builder object for this widget. If not, then mark the widget as 'dont_update'.
+        # This prevents data-loss if only a subset of fields in a table have corresponding builder objects.
+        my $this_builder_object = $self->get_widget( $widget );
+        
+        if ( ! $this_builder_object ) {
+            $self->{widgets}->{ $widget }->{dont_update} = 1;
+        }
+        
     }
     
     my $sth;
