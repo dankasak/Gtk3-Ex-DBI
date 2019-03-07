@@ -35,7 +35,7 @@ use constant {
 };
 
 BEGIN {
-    $Gtk3::Ex::DBI::Datasheet::VERSION                          = '3.33';
+    $Gtk3::Ex::DBI::Datasheet::VERSION                          = '3.4';
 }
 
 sub new {
@@ -64,6 +64,7 @@ sub new {
       , force_editable       => $$req{force_editable}                # Boolean to force cells to be editable ( eg so you can copy from them ) even if read-only
       , before_insert        => $$req{before_insert}                 # Code that runs *before* each record is inserted
       , before_query         => $$req{before_query}                  # Code that runs *before* query() is run
+      , after_query          => $$req{after_query}                   # Code that runs *after* query() is run
       , on_insert            => $$req{on_insert}                     # Code that runs *after* each record is inserted
       , before_apply         => $$req{before_apply}                  # Code that runs *before* each record is applied
       , on_apply             => $$req{on_apply}                      # Code that runs *after* each record is applied
@@ -2140,6 +2141,10 @@ sub query {
     
     if ( $self->{footer} ) {
         $self->update_footer;
+    }
+    
+    if ( $self->{after_query} ) {
+        $self->{after_query}();
     }
     
     return TRUE;
