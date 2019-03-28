@@ -7,6 +7,7 @@ CHANGELOG
      Use Text::CSV's new undef_str for encoding NULL values
      Default to utf8 encoding for CSVs ( data_to_csv )
      Added after_query callback
+     Fixed an obscure issue where Snowflake returns an empty recordset with no column definitions
 
 Version 3.3 ( add237f34c6d826c5fe93aae7ac3a4d606d675fc - 2017-08-28 )
 
