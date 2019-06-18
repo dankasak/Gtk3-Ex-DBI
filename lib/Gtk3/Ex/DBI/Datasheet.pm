@@ -2912,7 +2912,7 @@ sub column_from_sql_name {
     my $counter = 0;
     
     for my $field ( @{$self->{fieldlist}} ) {
-        if ( $field eq $sql_fieldname ) {
+        if ( uc( $field ) eq uc( $sql_fieldname ) ) {
             return $counter;
         }
         $counter ++;
