@@ -867,15 +867,15 @@ sub setup_treeview {
                     has_entry       => FALSE # TODO Periodically investigate: Gtk3::CellRendererCombos's 'has_entry' MUST be disabled to avoid http://bugzilla.gnome.org/show_bug.cgi?id=317387
                 );
                 
-                # It's possible that we won't have a model at this point
-                if ( $field->{model} ) {
-                    $renderer->set( model   => $field->{model} );
-                }
-                
             } else {
                 
                 $renderer->set( editable    => FALSE );
                 
+            }
+            
+            # It's possible that we won't have a model at this point
+            if ( $field->{model} ) {
+                $renderer->set( model   => $field->{model} );
             }
             
             $field->{ $treeview_type . "_column" } = Gtk3::TreeViewColumn->new_with_attributes(
