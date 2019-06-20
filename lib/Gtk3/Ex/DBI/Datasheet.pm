@@ -4024,6 +4024,18 @@ sub custom_sort {
     
 }
 
+sub select_first {
+    
+    my $self = shift;
+    
+    my $iter = $self->{treeview}->get_model->get_iter_first;
+    
+    if ( $iter ) {
+        $self->{treeview}->get_selection->select_iter( $iter );
+    }
+    
+}
+
 sub select_rows {
     
     # This function selects rows in a datasheet based on stuff in the $conditions hash
