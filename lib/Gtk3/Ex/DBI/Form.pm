@@ -732,7 +732,7 @@ sub query {
     # Update database from current hash if necessary
     if ( $self->{changed} ) {
         
-        my $answer = TRUE;
+        my $answer = 'yes';
         
         if ( ! $self->{auto_apply} ) {
             $answer = $self->dialog(
