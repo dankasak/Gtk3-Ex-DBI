@@ -2,6 +2,7 @@ CHANGELOG
 
     Gtk3::Ex::DBI::Form:
      Prevent dataloss if some fields in the underlying table don't have corresponding builder objects
+     Fix setting $self->{keyset} on inserting a record ( looks like it broke when multi-column primary keys added )
 
     Gtk3::Ex::DBI::Datasheet:
      Use Text::CSV's new undef_str for encoding NULL values

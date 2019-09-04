@@ -1474,7 +1474,7 @@ sub apply {
             push @keys, $self->{records}[$self->{slice_position}]->{ $self->{sql_to_widget_map}->{$primary_key} };
         }
         
-        push @{$self->{keyset}}, @keys;
+        push @{$self->{keyset}}, \@keys;
         
         $self->{changelock} = TRUE;
         $self->set_record_spinner_range;
