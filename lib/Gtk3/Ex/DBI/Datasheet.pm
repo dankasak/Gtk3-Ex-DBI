@@ -3041,10 +3041,11 @@ sub set_column_value {
         );
         return FALSE;
     }
+    
     $model->set(
-        $iter,
-        $self->column_from_name( $sql_fieldname ),
-        $value
+        $iter
+      , $column_no
+      , $value
     );
     
     return TRUE;
