@@ -195,7 +195,11 @@ sub new {
            . "Warnings triggered by your request:\n$legacy_warnings\n";
     }
     
-    $self->{server} = $self->{dbh}->get_info( 17 );
+    if ( $self->{dbh}->can( 'get_info' ) ) {
+        $self->{server} = $self->{dbh}->get_info( 17 );
+    } else {
+        $self->{server} = 'unknown - get_info() not available';
+    }
     
     # Some Database-specific stuff ...
     
@@ -428,8 +432,11 @@ sub setup_fields {
         $sth->execute || croak( $self->{dbh}->errstr );
     };
     
-    if ( $@ ) {
-        my $escaped = Glib::Markup::escape_text( $@ );
+    my $err = $@;
+    
+    if ( $err ) {
+        warn( $err );
+        my $escaped = Glib::Markup::escape_text( $err );
         $self->dialog(
             {
                 title   => "Error in Query!",
@@ -2697,6 +2704,38 @@ sub insert {
     if ( $self->{on_insert} ) {
         $self->{on_insert}();
     }
+    
+    return TRUE;
+    
+}
+
+sub upsert_key {
+    
+    my ( $self , $column_name , $value ) = @_;
+    
+    my $selected_rows = $self->select_rows(
+        {
+            column_no   => $self->column_from_column_name( $column_name )
+          , operator    => "eq"
+          , value       => $value
+        }
+    );
+    
+    if ( $selected_rows == 0 ) {
+        $self->insert();
+    } elsif ( $selected_rows > 1 ) {
+        $self->dialog(
+            {
+                title    => "Can't upsert non-unique value"
+              , type     => "error"
+              , text     => "upsert_key() was called on column [$column_name] with value [$value],\n"
+                          . " but there are multiple ($selected_rows) such values in this datasheet"
+            }
+        );
+        return FALSE;
+    }
+    
+    $self->set_column_value( $self->column_name_to_sql_name( $column_name ) , $value );
     
     return TRUE;
     
