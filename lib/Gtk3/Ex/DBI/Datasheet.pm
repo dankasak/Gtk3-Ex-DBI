@@ -35,7 +35,7 @@ use constant {
 };
 
 BEGIN {
-    $Gtk3::Ex::DBI::Datasheet::VERSION                          = '3.4';
+    $Gtk3::Ex::DBI::Datasheet::VERSION                          = '3.5';
 }
 
 sub new {
@@ -4088,6 +4088,7 @@ sub select_rows {
     #  - column_no
     #  - operator
     #  - value
+    #  - insensitive_match
     
     my $model = $self->{treeview}->get_model;
     my $iter = $model->get_iter_first;
@@ -4124,9 +4125,15 @@ sub select_rows {
                 $matched_rows ++;
             }
         } elsif ( $conditions->{operator} eq "eq" ) {
-            if ( $this_value eq $conditions->{value} ) {
-                $self->{treeview}->get_selection->select_iter( $iter );
-                $matched_rows ++;
+            if ( exists $conditions->{insensitive_match} && $conditions->{insensitive_match} ) {
+                if ( lower( $this_value ) eq lower( $conditions->{value} ) ) {
+                    $self->{treeview}->get_selection->select_iter( $iter );
+                    $matched_rows ++;
+                }
+                if ( $this_value eq $conditions->{value} ) {
+                    $self->{treeview}->get_selection->select_iter( $iter );
+                    $matched_rows ++;
+                }
             }
         } else {
             warn "Gtk3::Ex::DBI::Datasheet->select_rows() called with an invalid operator in the condition ...\n"
