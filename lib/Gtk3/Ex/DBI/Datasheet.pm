@@ -4130,6 +4130,7 @@ sub select_rows {
                     $self->{treeview}->get_selection->select_iter( $iter );
                     $matched_rows ++;
                 }
+            } else {
                 if ( $this_value eq $conditions->{value} ) {
                     $self->{treeview}->get_selection->select_iter( $iter );
                     $matched_rows ++;
