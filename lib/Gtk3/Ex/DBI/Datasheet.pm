@@ -4126,7 +4126,7 @@ sub select_rows {
             }
         } elsif ( $conditions->{operator} eq "eq" ) {
             if ( exists $conditions->{insensitive_match} && $conditions->{insensitive_match} ) {
-                if ( lower( $this_value ) eq lower( $conditions->{value} ) ) {
+                if ( lc( $this_value ) eq lc( $conditions->{value} ) ) {
                     $self->{treeview}->get_selection->select_iter( $iter );
                     $matched_rows ++;
                 }
