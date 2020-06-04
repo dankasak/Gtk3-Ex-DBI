@@ -35,7 +35,7 @@ use constant {
 };
 
 BEGIN {
-    $Gtk3::Ex::DBI::Datasheet::VERSION                          = '3.5';
+    $Gtk3::Ex::DBI::Datasheet::VERSION                          = '3.6';
 }
 
 sub new {
@@ -222,17 +222,7 @@ sub new {
         
     }
     
-    if ( ! $self->setup_fields ) {
-        # If there's an error setting up fields, we don't want to continue,
-        # as we'll ( sometimes ) then create a treeview which is awkward to detect
-        # and delete by the caller. The result is that if *another* datasheet object is constructed,
-        # we'll have 2 treeviews. This would happen, for example, when a user has to select a connection
-        # and database to run a given query against, and they get it wrong. Or alternatively when we're executing
-        # some SQL from a user and they get something wrong.
-        return undef;
-    }
-    
-    $self->setup_treeview( "treeview" );
+    $self->query;
     
     if ( $self->{auto_tools_box} ) {
         $self->{recordset_tools_box} = Gtk3::Box->new( 'GTK_ORIENTATION_HORIZONTAL', 0 );
@@ -241,25 +231,6 @@ sub new {
     
     if ( $self->{recordset_tools_box} ) {
         $self->setup_recordset_tools;
-    }
-    
-    if ( $self->{footer} ) {
-        
-        $self->setup_treeview( "footer_treeview" );
-        
-        # Unlike the main treeview's model, which gets constructed each time
-        # we query, the footer model stays the same, and the values get updated
-        
-        $self->{footer_model} = Gtk3::ListStore->new( @{ $self->{footer_treeview_treestore_def} } );
-        
-        # Insert a row
-        $self->{footer_model}->set(
-            $self->{footer_model}->append,
-            0, 0
-        );
-        
-        $self->{footer_treeview}->set_model( $self->{footer_model} );
-        
     }
     
     # Check recordset status when window is destroyed
@@ -305,8 +276,6 @@ sub new {
                 }
             } )
     ];
-    
-    $self->query;
     
     # TODO: this crashes:
     # *** unhandled exception in callback:
@@ -393,89 +362,8 @@ sub setup_fields {
     
     if ( exists $options->{rebuild} && $options->{rebuild} ) {
         delete $self->{fields};
-    }
-    
-    # Cache the fieldlist array so we don't have to continually query the Database Server for it
-    my $sth;
-    
-    eval {
-        if ( exists $self->{sql}->{pass_through} ) {
-            $sth = $self->{dbh}->prepare( $self->{sql}->{pass_through} )
-                || croak( $self->{dbh}->errstr );
-        } else {
-            $sth = $self->{dbh}->prepare(
-                "select " . $self->{sql}->{select} . " from " . $self->{sql}->{from} . " where 0=1")
-                    || croak( $self->{dbh}->errstr );
-        }
-    };
-    
-    if ( $@ ) {
-        my $escaped = Glib::Markup::escape_text( $@ );
-        $self->dialog(
-            {
-                title   => "Error in Query!",
-                type    => "error",
-                text    => "<b>Database server says:</b>\n\n$escaped"
-            }
-        );
-        if ( $self->{dump_on_error} ) {
-            if ( exists $self->{sql}->{pass_through} ) {
-                print "SQL was:\n\n" . $self->{sql}->{pass_through} . "\n\n";
-            } else {
-                print "SQL was:\n\n" . $self->{sql}->{select} . "\n\n";
-            }
-        }
-        return FALSE;
-    }
-    
-    eval {
-        $sth->execute || croak( $self->{dbh}->errstr );
-    };
-    
-    my $err = $@;
-    
-    if ( $err ) {
-        warn( $err );
-        my $escaped = Glib::Markup::escape_text( $err );
-        $self->dialog(
-            {
-                title   => "Error in Query!",
-                type    => "error",
-                text    => "<b>Database server says:</b>\n\n$escaped"
-            }
-        );
-        if ( $self->{dump_on_error} ) {
-            if ( exists $self->{sql}->{pass_through} ) {
-                print "SQL was:\n\n" . $self->{sql}->{pass_through} . "\n\n";
-            } else {
-                print "SQL was:\n\n$self->{sql}->{select}\n\n";
-            }
-        }
-        return FALSE;
-    }
-    
-    my $name_req_string = 'NAME';
-    
-    if ( $self->{force_upper_case_fields} ) {
-        $name_req_string .= '_uc';
-    }
-    
-    $self->{fieldlist} = $sth->{$name_req_string};
-    
-    $sth->finish;
-    
-    # Fetch primary key(s), but only if we haven't been passed one in the constructor
-    if ( ! $self->{primary_keys} && ! $self->{read_only} ) {
-        eval {
-            $sth = $self->{dbh}->primary_key_info( undef, undef, $self->{sql}->{from} )
-                || die $self->{dbh}->errstr;
-        };
-        if ( ! $@ ) {
-            while ( my $row = $sth->fetchrow_hashref ) {
-                print "$self->{friendly_table_name} detected primary key item: $row->{COLUMN_NAME}\n";
-                push @{$self->{primary_keys}}, $row->{COLUMN_NAME};
-            }
-        }
+    } elsif ( $self->{fields_setup} ) {
+        return TRUE;
     }
     
     # If there are no field definitions, then create some from our fieldlist from the database
@@ -512,9 +400,8 @@ sub setup_fields {
         }
     }
     
-    # Shove a _status_column_ at the front of $self->{fieldlist} and also $self->{fields}
+    # Shove a _status_column_ at the front of $self->{fields}
     # so we don't have off-by-one BS everywhere
-    unshift @{$self->{fieldlist}}, "_status_column_";
     
     unshift @{$self->{fields}}, {
         name            => "_status_column_",
@@ -523,6 +410,8 @@ sub setup_fields {
     };
     
     if ( ! $self->{sql}->{pass_through} ) {
+        
+        my $sth;
         
         # Fetch column_info for current table ( for those that support it )
         eval {
@@ -617,6 +506,29 @@ sub setup_fields {
     
     # Remember the primary key column for later
     $self->{primary_key_column} = $self->{column_name_to_number_mapping}->{ $self->{primary_key} };
+    
+    $self->setup_treeview( "treeview" , $options );
+    
+    if ( $self->{footer} ) {
+        
+        $self->setup_treeview( "footer_treeview" , $options );
+        
+        # Unlike the main treeview's model, which gets constructed each time
+        # we query, the footer model stays the same, and the values get updated
+        
+        $self->{footer_model} = Gtk3::ListStore->new( @{ $self->{footer_treeview_treestore_def} } );
+        
+        # Insert a row
+        $self->{footer_model}->set(
+            $self->{footer_model}->append,
+            0, 0
+        );
+        
+        $self->{footer_treeview}->set_model( $self->{footer_model} );
+        
+    }
+    
+    $self->{fields_setup} = TRUE;
     
     return TRUE;
     
@@ -1880,44 +1792,48 @@ sub query {
     
     # TODO Re-apply user-defined column sorting after querying
     
-    my $model = $self->{treeview}->get_model;
-    
-    if ( ! $dont_apply && ! $self->{read_only} && $model ) {
+    if ( $self->{treeview} ) {
         
-        # First test to see if we have any outstanding changes to the current datasheet
-        my $iter = $model->get_iter_first;
+        my $model = $self->{treeview}->get_model;
         
-        while ( $iter ) {
+        if ( ! $dont_apply && ! $self->{read_only} && $model ) {
             
-            my $status = $model->get( $iter, STATUS_COLUMN );
+            # First test to see if we have any outstanding changes to the current datasheet
+            my $iter = $model->get_iter_first;
             
-            # Decide what to do based on status
-            if ( $status != UNCHANGED  && $status != LOCKED ) {
+            while ( $iter ) {
                 
-                my $answer = TRUE;
+                my $status = $model->get( $iter, STATUS_COLUMN );
                 
-                if ( ! $self->{auto_apply} ) {
-                    $answer = $self->dialog(
-                        {
-                            title       => "Apply changes to " . $self->{friendly_table_name} . " before querying?",
-                            type        => "question",
-                            text        => $self->{custom_changed_text} ? $self->{custom_changed_text} :
-                                                "There are outstanding changes to the current datasheet ( " . $self->{friendly_table_name} . " )."
-                                                . " Do you want to apply them before running a new query?"
-                        }
-                    );
-                }
-                
-                if ( $answer eq 'yes' ) {
-                    if ( ! $self->apply ) {
-                        return FALSE; # Apply method will already give a dialog explaining error
+                # Decide what to do based on status
+                if ( $status != UNCHANGED  && $status != LOCKED ) {
+                    
+                    my $answer = TRUE;
+                    
+                    if ( ! $self->{auto_apply} ) {
+                        $answer = $self->dialog(
+                            {
+                                title       => "Apply changes to " . $self->{friendly_table_name} . " before querying?",
+                                type        => "question",
+                                text        => $self->{custom_changed_text} ? $self->{custom_changed_text} :
+                                                    "There are outstanding changes to the current datasheet ( " . $self->{friendly_table_name} . " )."
+                                                    . " Do you want to apply them before running a new query?"
+                            }
+                        );
                     }
+                    
+                    if ( $answer eq 'yes' ) {
+                        if ( ! $self->apply ) {
+                            return FALSE; # Apply method will already give a dialog explaining error
+                        }
+                    }
+                    
                 }
                 
-            }
-            
-            if( ! $model->iter_next( $iter ) ) {
-                last;
+                if( ! $model->iter_next( $iter ) ) {
+                    last;
+                }
+                
             }
             
         }
@@ -1926,6 +1842,23 @@ sub query {
     
     if ( $self->{before_query} ) {
         $self->{before_query}();
+    }
+    
+    # Fetch primary key(s), but only if we dont have some ( they can be passed in the constructor,
+    # or we could have some from a previous query() call )
+    
+    if ( ! $self->{primary_keys} && ! $self->{read_only} ) {
+        my $sth;
+        eval {
+            $sth = $self->{dbh}->primary_key_info( undef, undef, $self->{sql}->{from} )
+                || die $self->{dbh}->errstr;
+        };
+        if ( ! $@ ) {
+            while ( my $row = $sth->fetchrow_hashref ) {
+                print "$self->{friendly_table_name} detected primary key item: $row->{COLUMN_NAME}\n";
+                push @{$self->{primary_keys}}, $row->{COLUMN_NAME};
+            }
+        }
     }
     
     my $sql;
@@ -2010,9 +1943,6 @@ sub query {
         return FALSE;
     }
     
-    # Create a new ListStore
-    my $liststore = Gtk3::ListStore->new( @{ $self->{treeview_treestore_def} } );
-    
     eval {
         if ( $self->{sql}->{bind_values} ) {
             $sth->execute( @{$self->{sql}->{bind_values}} ) || die $self->{dbh}->errstr;
@@ -2041,6 +1971,32 @@ sub query {
     $query_end_time = Time::HiRes::gettimeofday;
     
     $self->{query_execution_time} = $query_end_time - $query_start_time;
+    
+    # Cache $self->{fieldlist}
+    my $name_req_string = 'NAME';
+    
+    if ( $self->{force_upper_case_fields} ) {
+        $name_req_string .= '_uc';
+    }
+    
+    $self->{fieldlist} = $sth->{$name_req_string};
+    
+    if ( ! $self->setup_fields ) {
+        # If there's an error setting up fields, we don't want to continue,
+        # as we'll ( sometimes ) then create a treeview which is awkward to detect
+        # and delete by the caller. The result is that if *another* datasheet object is constructed,
+        # we'll have 2 treeviews. This would happen, for example, when a user has to select a connection
+        # and database to run a given query against, and they get it wrong. Or alternatively when we're executing
+        # some SQL from a user and they get something wrong.
+        return undef;
+    }
+    
+    # Shove a _status_column_ at the front of $self->{fieldlist
+    # so we don't have off-by-one BS everywhere
+    unshift @{$self->{fieldlist}}, "_status_column_";
+    
+    # Create a new ListStore
+    my $liststore = Gtk3::ListStore->new( @{ $self->{treeview_treestore_def} } );
     
     # Remember the data_lock_field's position in the field array ...
     my $lock_position;
