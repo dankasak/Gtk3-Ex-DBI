@@ -222,7 +222,9 @@ sub new {
         
     }
     
-    $self->query;
+    if ( ! $self->query ) {
+        return $self;
+    }
     
     if ( $self->{auto_tools_box} ) {
         $self->{recordset_tools_box} = Gtk3::Box->new( 'GTK_ORIENTATION_HORIZONTAL', 0 );
