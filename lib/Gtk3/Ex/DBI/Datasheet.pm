@@ -35,7 +35,7 @@ use constant {
 };
 
 BEGIN {
-    $Gtk3::Ex::DBI::Datasheet::VERSION                          = '3.6';
+    $Gtk3::Ex::DBI::Datasheet::VERSION                          = '3.7';
 }
 
 sub new {
@@ -388,9 +388,13 @@ sub setup_fields {
     # Now scan for each primary key item in the fieldlist
     # If we don't find them, append them to the end of the list and create a hidden column for them
     foreach my $primary_key_item ( @{$self->{primary_keys}} ) {
-        my @matches = grep( /^$primary_key_item$/, @{$self->{fieldlist}} );
-        if ( ! @matches ) {
-            push @{$self->{fieldlist}}, $primary_key_item;
+        my $found = FALSE;
+        foreach my $field ( @{$self->{fields}} ) {
+            if ( $field->{name} eq $primary_key_item ) {
+                $found = TRUE;
+            }
+        }
+        if ( ! $found ) {
             # Create a hidden column to store the PK item in
             my $next_column_no = scalar @{$self->{fields}};            
             push @{$self->{fields}},
