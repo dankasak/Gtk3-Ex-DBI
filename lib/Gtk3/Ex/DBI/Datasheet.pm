@@ -1906,8 +1906,16 @@ sub query {
         
         $sql = "select " . $self->{sql}->{select};
         
-        foreach my $primary_key_item ( @{$self->{primary_keys}} ) {
-            $sql .= ", $primary_key_item";
+        if ( $self->{sql}->{select} ne "*" ) {
+            my @sql_fields = split /,/ , $self->{sql}->{select};
+            foreach my $this_field ( @sql_fields ) {
+                $this_field =~ s/(^\s*|\s*$)//g;
+            }
+            foreach my $primary_key_item ( @{$self->{primary_keys}} ) {
+                if ( ! grep( /^$primary_key_item$/i, @sql_fields ) ) {
+                    $sql .= ", $primary_key_item";
+                }
+            }
         }
         
         $sql .= " from " . $self->{sql}->{from};
