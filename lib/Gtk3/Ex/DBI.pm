@@ -10,7 +10,7 @@ use Glib qw ' TRUE FALSE ';
 # projects into 1
 
 BEGIN {
-    $Gtk3::Ex::DBI::VERSION = '3.5';
+    $Gtk3::Ex::DBI::VERSION = '3.7';
 }
 
 sub setup_recordset_tools {

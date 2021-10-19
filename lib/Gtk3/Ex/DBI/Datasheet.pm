@@ -14,6 +14,8 @@ use strict;
 #use warnings;
 no warnings;
 
+use Encode;
+
 use Carp;
 
 use Glib qw/TRUE FALSE/;
@@ -35,7 +37,7 @@ use constant {
 };
 
 BEGIN {
-    $Gtk3::Ex::DBI::Datasheet::VERSION                          = '3.7';
+    $Gtk3::Ex::DBI::Datasheet::VERSION                          = '3.8';
 }
 
 sub new {
@@ -2041,6 +2043,8 @@ sub query {
                 push @model_row, $liststore->append, STATUS_COLUMN, $record_status;
                 
             } elsif ( $field->{renderer} ne "dynamic_model" ) { # Skip these, as they aren't in the data set
+                
+                Encode::_utf8_on( $row[$column - 1] );
                 
                 push @model_row,
                     $column,
