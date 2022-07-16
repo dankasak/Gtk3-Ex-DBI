@@ -478,7 +478,7 @@ sub setup_fields {
             my $fieldtype = $self->{column_info}->{$sql_name}->{TYPE_NAME};
             if ( ! $fieldtype ) {
                 $field->{renderer} = "text";
-            } elsif ( $fieldtype =~ m/INT|DOUBLE/ ) {
+            } elsif ( $fieldtype =~ m/INT|DOUBLE/i ) {
                 $field->{renderer} = "number";
                 # Setting up a number hash forces numeric sorting
                 if ( ! exists $field->{number} ) {
@@ -780,7 +780,7 @@ sub setup_treeview {
             my $sql_name = $self->column_name_to_sql_name( $field->{name} );
             my $fieldtype = $self->{column_info}->{$sql_name}->{TYPE_NAME};
             
-            if ( $fieldtype =~ m/INT/ ) {
+            if ( $fieldtype =~ m/INT/i ) {
                 $renderer->{data_type} = "numeric";
             } else {
                 $renderer->{data_type} = "string";
@@ -869,7 +869,7 @@ sub setup_treeview {
             my $sql_name = $self->column_name_to_sql_name( $field->{name} );
             my $fieldtype = $self->{column_info}->{$sql_name}->{TYPE_NAME};
             
-            if ( $fieldtype =~ m/INT/ ) {
+            if ( $fieldtype =~ m/INT/i ) {
                 $renderer->{data_type} = "numeric";
             } else {
                 $renderer->{data_type} = "string";
@@ -2955,7 +2955,7 @@ sub column_name_to_sql_name {
     my ( $self, $column_name ) = @_;
     
     my $column_no = $self->column_from_column_name ( $column_name );
-    return $self->{fieldlist}[$column_no];
+    return $self->{fieldlist}[ $column_no - 1 ];
     
 }
 
