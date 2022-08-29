@@ -37,7 +37,7 @@ use constant {
 };
 
 BEGIN {
-    $Gtk3::Ex::DBI::Datasheet::VERSION                          = '3.8';
+    $Gtk3::Ex::DBI::Datasheet::VERSION                          = '3.9';
 }
 
 sub new {
@@ -511,9 +511,6 @@ sub setup_fields {
         $column_no ++;
         
     }
-    
-    # Remember the primary key column for later
-    $self->{primary_key_column} = $self->{column_name_to_number_mapping}->{ $self->{primary_key} };
     
     $self->setup_treeview( "treeview" , $options );
     
@@ -1263,7 +1260,7 @@ sub setup_treeview {
     #$self->{ $treeview_type . "_expose_signal" } = $self->{ $treeview_type }->signal_connect( expose_event => sub { $self->on_expose_event( @_, $treeview_type ); } );
     
     # Turn on multi-select mode if requested
-    if ($self->{multi_select}) {
+    if ( $self->{multi_select} ) {
         $self->{ $treeview_type }->get_selection->set_mode("multiple");
     }
     
@@ -1997,6 +1994,10 @@ sub query {
     
     $self->{fieldlist} = $sth->{$name_req_string};
     
+    # Shove a _status_column_ at the front of $self->{fieldlist
+    # so we don't have off-by-one BS everywhere
+    unshift @{$self->{fieldlist}}, "_status_column_";
+        
     if ( ! $self->setup_fields ) {
         # If there's an error setting up fields, we don't want to continue,
         # as we'll ( sometimes ) then create a treeview which is awkward to detect
@@ -2006,10 +2007,6 @@ sub query {
         # some SQL from a user and they get something wrong.
         return undef;
     }
-    
-    # Shove a _status_column_ at the front of $self->{fieldlist
-    # so we don't have off-by-one BS everywhere
-    unshift @{$self->{fieldlist}}, "_status_column_";
     
     # Create a new ListStore
     my $liststore = Gtk3::ListStore->new( @{ $self->{treeview_treestore_def} } );
@@ -2955,7 +2952,7 @@ sub column_name_to_sql_name {
     my ( $self, $column_name ) = @_;
     
     my $column_no = $self->column_from_column_name ( $column_name );
-    return $self->{fieldlist}[ $column_no - 1 ];
+    return $self->{fieldlist}[ $column_no ];
     
 }
 

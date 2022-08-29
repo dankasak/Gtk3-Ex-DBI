@@ -12,6 +12,7 @@ CHANGELOG
      Optimisation - don't call column_from_name() twice in set_column_value()
      Added upsert_key() method - for upserting a key/value pair into a datasheet
      Added insensitive_match to select_rows()
+     Fixed off-by-one issues in fieldlist / sql-to-column madness
 
 Version 3.3 ( add237f34c6d826c5fe93aae7ac3a4d606d675fc - 2017-08-28 )
 
