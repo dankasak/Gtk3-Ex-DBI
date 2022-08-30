@@ -378,11 +378,13 @@ sub setup_fields {
         if ( $no_of_fields ) {
             my $field_percentage = $no_of_fields < 8 ? 100 / $no_of_fields : 12.5; # Don't set percentages < 12.5 - doesn't really work so well ...
             for my $field ( @{$self->{fieldlist}} ) {
-                push @{$self->{fields}},
-                    {
-                        name        => $field
-                      , x_percent   => $field_percentage
-                    };
+                if ( $field ne "_status_column_" ) {
+                    push @{$self->{fields}},
+                        {
+                            name        => $field
+                          , x_percent   => $field_percentage
+                        };
+                }
             }
         }
     }
