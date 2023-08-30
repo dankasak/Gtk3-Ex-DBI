@@ -18,7 +18,7 @@ use Time::HiRes;
 use Glib qw/TRUE FALSE/;
 
 BEGIN {
-    $Gtk3::Ex::DBI::Form::VERSION = '3.5';
+    $Gtk3::Ex::DBI::Form::VERSION = '3.6';
 }
 
 sub new {
@@ -950,6 +950,8 @@ sub assemble_new_record {
         my $default = $self->{column_info}->{$fieldname}->{COLUMN_DEF};
         if ( $default && $self->{server} =~ /microsoft/i ) {
             $default = $self->parse_sql_server_default( $default );
+        } elsif ( $self->{server} =~ /postgres/i ) {
+            $default = $self->parse_postgres_default( $default );
         }
         $new_record->{$fieldname} = $default;
     }
@@ -2899,6 +2901,18 @@ sub parse_sql_server_default {
         #  ... and strip off any quotes
         $default_value =~ s/'//g;
         return $default_value;
+    }
+    
+}
+
+sub self->parse_postgres_default {
+    
+    my ( $self , $postgres_default ) = @_;
+    
+    if ( $postgres_default =~ /^nextval/ ) {
+        return '';
+    } else {
+        return $postgres_default;
     }
     
 }
