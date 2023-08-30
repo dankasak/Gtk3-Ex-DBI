@@ -2905,7 +2905,7 @@ sub parse_sql_server_default {
     
 }
 
-sub self->parse_postgres_default {
+sub parse_postgres_default {
     
     my ( $self , $postgres_default ) = @_;
     
