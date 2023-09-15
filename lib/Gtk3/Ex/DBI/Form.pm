@@ -460,6 +460,9 @@ sub new {
         if ( $self->{dont_update_keys} ) {
             $self->{widgets}->{ $primary_key }->{dont_update} = 1;
         }
+        if ( $self->{auto_incrementing} ) {
+            $self->{widgets}->{ $primary_key }->{dont_insert} = 1;
+        }
     }
     
     # If things failed above, we mightn't have a $sth to finish, so

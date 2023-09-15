@@ -1996,7 +1996,7 @@ sub query {
     
     $self->{fieldlist} = $sth->{$name_req_string};
     
-    # Shove a _status_column_ at the front of $self->{fieldlist
+    # Shove a _status_column_ at the front of $self->{fieldlist}
     # so we don't have off-by-one BS everywhere
     unshift @{$self->{fieldlist}}, "_status_column_";
         
