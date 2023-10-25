@@ -541,12 +541,16 @@ sub new {
                 
             } elsif ( $type eq "Gtk3::ToggleButton"
                    || $type eq "Gtk3::RadioButton"
-                   || $type eq "Gtk3::Switch"
             ) {
                 
                 push @signals, $widget->signal_connect_after(
                     toggled =>              sub { $self->changed( $fieldname ) } );
                 
+            } elsif ( $type eq "Gtk3::Switch" ) {
+                
+                push @signals, $widget->signal_connect(
+                    'state-set' =>              sub { $self->changed( $fieldname ) } );
+
             } elsif ( $type eq "Gtk3::TextView" || $type eq "Gtk3::SourceView::View" ) {
                 
                 # In this case, we don't connect to the widget, but to the widget's buffer ...
