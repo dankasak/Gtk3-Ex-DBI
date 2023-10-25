@@ -541,6 +541,7 @@ sub new {
                 
             } elsif ( $type eq "Gtk3::ToggleButton"
                    || $type eq "Gtk3::RadioButton"
+                   || $type eq "Gtk3::Switch"
             ) {
                 
                 push @signals, $widget->signal_connect_after(
