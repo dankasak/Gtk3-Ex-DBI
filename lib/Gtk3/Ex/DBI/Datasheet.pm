@@ -37,7 +37,7 @@ use constant {
 };
 
 BEGIN {
-    $Gtk3::Ex::DBI::Datasheet::VERSION                          = '3.9';
+    $Gtk3::Ex::DBI::Datasheet::VERSION                          = '3.10';
 }
 
 sub new {
@@ -1803,6 +1803,12 @@ sub query {
         
         my $model = $self->{treeview}->get_model;
         
+        # If there's a row selected, we try to re-select it after querying. This provides a better UX, especially when a datasheet is
+        # being continually refreshed ( eg a dashboard ), and *especially* when the selected row is driving other parts of the UI
+        foreach my $pk ( @{ $self->{primary_keys} } ) {
+            @{ $self->{_selected_pk_vals}->{ $pk } } = $self->get_column_value( $pk );
+        }
+        
         if ( ! $dont_apply && ! $self->{read_only} && $model ) {
             
             # First test to see if we have any outstanding changes to the current datasheet
@@ -2125,6 +2131,28 @@ sub query {
     
     if ( $self->{footer} ) {
         $self->update_footer;
+    }
+    
+    if ( exists $self->{_selected_pk_vals} ) {
+        $self->{treeview}->get_selection->unselect_all();
+        my $saved_rows_count;
+        foreach my $pk ( @{ $self->{primary_keys} } ) {
+            $saved_rows_count = scalar @{ $self->{_selected_pk_vals}->{ $pk } };
+        }
+        print( "Saved rows count: [$saved_rows_count]\n" );
+        for ( my $i = 0 ; $i < $saved_rows_count ; $i ++ ) {
+            my $conditions;
+            foreach my $pk ( @{ $self->{primary_keys} } ) {
+                push @{$conditions}
+                , {
+                      column_no => $self->column_from_sql_name( $pk )
+                    , operator  => 'eq' # TODO: determine based on column type?
+                    , value     => $self->{_selected_pk_vals}->{ $pk }->[ $i ]
+                  };
+            }
+            $self->select_rows( $conditions );
+        }
+        delete $self->{_selected_pk_vals};
     }
     
     if ( $self->{after_query} ) {
@@ -4066,52 +4094,34 @@ sub select_rows {
     my $model = $self->{treeview}->get_model;
     my $iter = $model->get_iter_first;
     
-    if ( $conditions ) {
-        if ( ! ( exists $conditions->{column_no} && exists $conditions->{operator} && exists $conditions->{value} ) ) {
-            warn "Gtk3::Ex::DBI::Datasheet->select_rows() called with an incomplete conditions hash ..."
-                    . " ... must have 'column_no', 'operator' and 'value' keys to conditions hash!\n\n";
-            return FALSE;
-        }
+    # TODO: check for hash or array of hashes, and assemble an array of hashes
+    my $type = ref $conditions;
+    
+    print( "Conditions: $type\n" );
+    
+    my @conditions_array;
+    
+    if ( $type eq "HASH" ) {
+        push @conditions_array , $conditions;
+    } else {
+        @conditions_array = @{$conditions};
     }
     
     my $matched_rows = 0;
     
     while ( $iter ) {
-        my $this_value = $model->get( $iter, $conditions->{column_no} );
-        if ( $self->{fields}[$conditions->{column_no}]->{treeview_column}->{definition}->{number}->{currency}
-                && $self->{fields}[$conditions->{column_no}]->{treeview_column}->{definition}->{number}->{currency} ) {
-            $this_value =~ s/[\$\,]//g;
+        my $matches = 0;
+        for my $condition ( @conditions_array ) {
+            if ( ! ( exists $condition->{column_no} && exists $condition->{operator} && exists $condition->{value} ) ) {
+                warn "Gtk3::Ex::DBI::Datasheet->select_rows() called with an incomplete conditions hash ..."
+                    . " ... must have 'column_no', 'operator' and 'value' keys to conditions hash!\n\n";
+                return FALSE;
+            }
+            $matches += $self->_select_rows_match_condition( $model , $iter , $condition );
         }
-        if ( $conditions->{operator} eq "==" ) {
-            if ( $this_value == $conditions->{value} ) {
-                $self->{treeview}->get_selection->select_iter( $iter );
-                $matched_rows ++;
-            }
-        } elsif ( $conditions->{operator} eq "<" ) {
-            if ( $this_value < $conditions->{value} ) {
-                $self->{treeview}->get_selection->select_iter( $iter );
-                $matched_rows ++;
-            }
-        } elsif ( $conditions->{operator} eq ">" ) {
-            if ( $this_value > $conditions->{value} ) {
-                $self->{treeview}->get_selection->select_iter( $iter );
-                $matched_rows ++;
-            }
-        } elsif ( $conditions->{operator} eq "eq" ) {
-            if ( exists $conditions->{insensitive_match} && $conditions->{insensitive_match} ) {
-                if ( lc( $this_value ) eq lc( $conditions->{value} ) ) {
-                    $self->{treeview}->get_selection->select_iter( $iter );
-                    $matched_rows ++;
-                }
-            } else {
-                if ( $this_value eq $conditions->{value} ) {
-                    $self->{treeview}->get_selection->select_iter( $iter );
-                    $matched_rows ++;
-                }
-            }
-        } else {
-            warn "Gtk3::Ex::DBI::Datasheet->select_rows() called with an invalid operator in the condition ...\n"
-                . " ... operator: $conditions->{operator}\n\n";
+        if ( $matches == scalar @conditions_array ) {
+            $matched_rows ++;
+            $self->{treeview}->get_selection->select_iter( $iter );
         }
         if ( ! $model->iter_next( $iter ) ) {
             last;
@@ -4119,6 +4129,48 @@ sub select_rows {
     }
     
     return $matched_rows;
+    
+}
+
+sub _select_rows_match_condition {
+    
+    my ( $self , $model , $iter , $condition ) = @_;
+    
+    my $match = 0;
+    my $this_value = $model->get( $iter, $condition->{column_no} );
+    if ( $self->{fields}[ $condition->{column_no} ]->{treeview_column}->{definition}->{number}->{currency}
+            && $self->{fields}[ $condition->{column_no} ]->{treeview_column}->{definition}->{number}->{currency} ) {
+        $this_value =~ s/[\$\,]//g;
+    }
+    
+    if ( $condition->{operator} eq "==" ) {
+        if ( $this_value == $condition->{value} ) {
+            $match = 1;
+        }
+    } elsif ( $condition->{operator} eq "<" ) {
+        if ( $this_value < $condition->{value} ) {
+            $match = 1;
+        }
+    } elsif ( $condition->{operator} eq ">" ) {
+        if ( $this_value > $condition->{value} ) {
+            $match = 1;
+        }
+    } elsif ( $condition->{operator} eq "eq" ) {
+        if ( exists $condition->{insensitive_match} && $condition->{insensitive_match} ) {
+            if ( lc( $this_value ) eq lc( $condition->{value} ) ) {
+                $match = 1;
+            }
+        } else {
+            if ( $this_value eq $condition->{value} ) {
+                $match = 1;
+            }
+        }
+    } else {
+        warn "Gtk3::Ex::DBI::Datasheet->select_rows() called with an invalid operator in the condition ...\n"
+            . " ... operator: $condition->{operator}\n\n";
+    }
+    
+    return $match;
     
 }
 

@@ -18,7 +18,7 @@ use Time::HiRes;
 use Glib qw/TRUE FALSE/;
 
 BEGIN {
-    $Gtk3::Ex::DBI::Form::VERSION = '3.6';
+    $Gtk3::Ex::DBI::Form::VERSION = '3.7';
 }
 
 sub new {
@@ -2358,6 +2358,7 @@ sub get_widget_value {
         
     } elsif ( $type eq "Gtk3::ToggleButton"
            || $type eq "Gtk3::RadioButton"
+           || $type eq "Gtk3::Switch"
     ) {
         
         if ( $widget->get_active ) {
@@ -2528,6 +2529,7 @@ sub set_widget_value {
         
     } elsif ( $type eq "Gtk3::ToggleButton"
            || $type eq "Gtk3::RadioButton"
+           || $type eq "Gtk3::Switch"
     ) {
         
         $widget->set_active( $local_value || 0 );
