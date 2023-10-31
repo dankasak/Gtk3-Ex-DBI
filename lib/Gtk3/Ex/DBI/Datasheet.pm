@@ -37,7 +37,7 @@ use constant {
 };
 
 BEGIN {
-    $Gtk3::Ex::DBI::Datasheet::VERSION                          = '3.10';
+    $Gtk3::Ex::DBI::Datasheet::VERSION                          = '3.11';
 }
 
 sub new {
@@ -3007,9 +3007,9 @@ sub get_column_value {
     my ( $selected_paths, $model ) = $self->{treeview}->get_selection->get_selected_rows;
     
     # Gtk2 used to return an array ( possibly empty ). Gtk3 seems to be returning undef instead of empty array
-    if ( ! $selected_paths || ! scalar( @{$selected_paths} ) ) {
-        return 0;
-    }
+#    if ( ! $selected_paths || ! scalar( @{$selected_paths} ) ) {
+#        return 0;
+#    }
     
     my @selected_values;
     
