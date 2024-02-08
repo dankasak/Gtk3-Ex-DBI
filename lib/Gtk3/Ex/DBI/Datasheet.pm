@@ -37,7 +37,7 @@ use constant {
 };
 
 BEGIN {
-    $Gtk3::Ex::DBI::Datasheet::VERSION                          = '3.11';
+    $Gtk3::Ex::DBI::Datasheet::VERSION                          = '3.12';
 }
 
 sub new {
@@ -2139,7 +2139,7 @@ sub query {
         foreach my $pk ( @{ $self->{primary_keys} } ) {
             $saved_rows_count = scalar @{ $self->{_selected_pk_vals}->{ $pk } };
         }
-        print( "Saved rows count: [$saved_rows_count]\n" );
+#        print( "Saved rows count: [$saved_rows_count]\n" );
         for ( my $i = 0 ; $i < $saved_rows_count ; $i ++ ) {
             my $conditions;
             foreach my $pk ( @{ $self->{primary_keys} } ) {
@@ -4097,7 +4097,7 @@ sub select_rows {
     # TODO: check for hash or array of hashes, and assemble an array of hashes
     my $type = ref $conditions;
     
-    print( "Conditions: $type\n" );
+#    print( "Conditions: $type\n" );
     
     my @conditions_array;
     
@@ -5661,6 +5661,38 @@ eq ... a string equals operator
 =over 4
 
 The value to compare the column data to.
+
+=back
+
+=back
+
+=head2 select_rows ( $conditions )
+
+=over 4
+
+This method selects all rows that match $conditions.
+
+=head3 conditions
+
+=over 4
+
+conditions can be either a hash or an arrayref ( of hashes )
+
+The following hash keys are supported:
+
+=over 4
+
+    column_no
+
+    operator ( one of [ == , < , > , eq ] )
+
+=back
+
+    value
+
+    insensitive_match
+
+=back
 
 =back
 
